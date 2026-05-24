@@ -26,6 +26,7 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.utility.DockerImageName;
 
+import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
@@ -335,13 +336,33 @@ class TaskIntegrationTest {
     /**
      * Crée une UserJpaEntity pour les données de test.
      * Bypasse le UseCase (test d'intégration DB, pas test métier).
+     *
+     * On utilise le constructeur complet du record User (12 champs) :
+     * UserId, keycloakId, username, email, firstName, lastName,
+     * UserRole, TeamId, UnitId, boolean active, Instant createdAt, Instant updatedAt
      */
     private UserJpaEntity createUserEntity(UserId id, String firstName, String lastName,
                                            String email, UserRole role, TeamId teamId) {
-        User user = new User(id, "keycloak-" + id.value(), firstName, lastName,
-                email, role, teamId,
-                new com.todo.domain.model.UnitId(
-                    UUID.fromString("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")));
+        var now   = Instant.now();
+        var unitId = new com.todo.domain.model.UnitId(
+                UUID.fromString("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"));
+        // username dérivé du prénom en minuscules (login de test)
+        var username = firstName.toLowerCase();
+
+        User user = new User(
+                id,
+                "keycloak-" + id.value(),   // keycloakId fictif pour les tests
+                username,                   // username
+                email,
+                firstName,
+                lastName,
+                role,
+                teamId,
+                unitId,
+                true,                       // active
+                now,                        // createdAt
+                now                         // updatedAt
+        );
         return UserJpaEntity.fromDomain(user);
     }
 }
