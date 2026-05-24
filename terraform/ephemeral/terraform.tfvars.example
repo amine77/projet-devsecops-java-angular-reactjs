@@ -1,0 +1,13 @@
+# Copier en terraform.tfvars (ignoré par Git)
+environment            = "dev"
+db_name                = "tododb"
+db_username            = "todouser"
+db_instance_class      = "db.t3.micro"
+redis_node_type        = "cache.t3.micro"
+backend_image_tag      = "latest"
+backend_cpu            = 256
+backend_memory         = 512
+backend_desired_count  = 1
+frontend_cpu           = 256
+frontend_memory        = 256
+frontend_desired_count = 1

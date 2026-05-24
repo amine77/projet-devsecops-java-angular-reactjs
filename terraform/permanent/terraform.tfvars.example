@@ -1,0 +1,6 @@
+# Copier en terraform.tfvars (ignoré par Git)
+aws_region     = "eu-west-3"
+aws_account_id = "583931058666"
+environment    = "dev"
+github_org     = "amine77"
+github_repo    = "projet-devsecops-java-angular-reactjs"
