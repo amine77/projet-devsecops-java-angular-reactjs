@@ -1,40 +1,52 @@
 # ══════════════════════════════════════════════════════════════
 #  OUTPUTS — terraform/ephemeral/outputs.tf
+#  Stack éphémère : EC2 Minikube
 # ══════════════════════════════════════════════════════════════
 
-output "alb_dns_name" {
-  description = "DNS de l'ALB — acceder a l'application via cette URL"
-  value       = "http://${aws_lb.main.dns_name}"
+output "ec2_public_ip" {
+  description = "IP publique fixe de l'EC2 Minikube (Elastic IP)"
+  value       = aws_eip.minikube.public_ip
 }
 
-output "alb_dns_api" {
-  description = "URL de l'API backend"
-  value       = "http://${aws_lb.main.dns_name}/api"
+output "ssh_command" {
+  description = "Commande SSH pour se connecter à l'EC2"
+  value       = "ssh -i ~/.ssh/todo-minikube ubuntu@${aws_eip.minikube.public_ip}"
 }
 
-output "rds_endpoint" {
-  description = "Endpoint RDS PostgreSQL"
-  value       = aws_db_instance.main.endpoint
-  sensitive   = true    # Ne pas afficher dans les logs CI
+output "kubernetes_api_url" {
+  description = "URL de l'API server Kubernetes (pour kubeconfig)"
+  value       = "https://${aws_eip.minikube.public_ip}:8443"
 }
 
-output "redis_endpoint" {
-  description = "Endpoint ElastiCache Redis"
-  value       = aws_elasticache_cluster.main.cache_nodes[0].address
-  sensitive   = true
-}
-
-output "ecs_cluster_name" {
-  description = "Nom du cluster ECS"
-  value       = aws_ecs_cluster.main.name
-}
-
-output "deploy_command" {
-  description = "Commande AWS CLI pour forcer un nouveau deploiement"
+output "kubectl_config_instructions" {
+  description = "Instructions pour récupérer le kubeconfig et l'ajouter aux secrets GitHub"
   value       = <<-EOT
-    # Pour redéployer manuellement :
-    aws ecs update-service --cluster ${aws_ecs_cluster.main.name} --service todo-backend-service --force-new-deployment
-    aws ecs update-service --cluster ${aws_ecs_cluster.main.name} --service todo-frontend-angular-service --force-new-deployment
-    aws ecs update-service --cluster ${aws_ecs_cluster.main.name} --service todo-frontend-react-service --force-new-deployment
+
+    ════════════════════════════════════════════════════════
+     ÉTAPES POST-APPLY (à faire une seule fois)
+    ════════════════════════════════════════════════════════
+
+    1. Attendre ~8 minutes que Minikube finisse de s'installer
+       Vérifier les logs : ssh ubuntu@${aws_eip.minikube.public_ip}
+                           cat /var/log/setup-minikube.log
+
+    2. Se connecter en SSH :
+       ssh -i ~/.ssh/todo-minikube ubuntu@${aws_eip.minikube.public_ip}
+
+    3. Vérifier que Minikube tourne :
+       minikube status
+       kubectl get nodes
+
+    4. Exporter le kubeconfig (base64) :
+       cat ~/.kube/config | base64 -w0
+
+    5. Copier la sortie dans GitHub :
+       Repo Settings → Secrets and variables → Actions
+       → New secret : KUBECONFIG_B64 = <valeur base64>
+
+    6. Ajouter aussi le secret EC2_HOST :
+       EC2_HOST = ${aws_eip.minikube.public_ip}
+
+    ════════════════════════════════════════════════════════
   EOT
 }

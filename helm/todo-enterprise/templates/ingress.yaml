@@ -1,0 +1,64 @@
+# ══════════════════════════════════════════════════════════════
+#  INGRESS — Routage HTTP via NGINX Ingress Controller
+# ══════════════════════════════════════════════════════════════
+#
+#  L'Ingress est le point d'entrée unique pour toutes les requêtes HTTP.
+#  NGINX Ingress Controller lit ces règles et route le trafic.
+#
+#  ROUTING :
+#  todo.local/api/*   → Service backend:8080
+#  todo.local/react/* → Service frontend-react:80
+#  todo.local/*       → Service frontend-angular:80 (défaut)
+#
+#  POINT ENTRETIEN :
+#  "L'Ingress Controller est l'équivalent Kubernetes d'un reverse proxy
+#   comme Nginx ou d'un ALB AWS. Une seule IP publique, plusieurs services."
+{{- if .Values.ingress.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "todo-enterprise.fullname" . }}-ingress
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "todo-enterprise.labels" . | nindent 4 }}
+  annotations:
+    # Classe d'Ingress : nginx (addon Minikube)
+    nginx.ingress.kubernetes.io/rewrite-target: /
+    # Timeout pour Spring Boot (peut prendre du temps à répondre)
+    nginx.ingress.kubernetes.io/proxy-connect-timeout: "30"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "60"
+spec:
+  ingressClassName: {{ .Values.ingress.className }}
+
+  rules:
+    - host: {{ .Values.ingress.host }}
+      http:
+        paths:
+          # ── API Backend ──────────────────────────────────────
+          # /api/* → Spring Boot (doit être avant /* pour la priorité)
+          - path: /api
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "todo-enterprise.fullname" . }}-backend
+                port:
+                  name: http
+
+          # ── Frontend React ───────────────────────────────────
+          - path: /react
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "todo-enterprise.fullname" . }}-react
+                port:
+                  name: http
+
+          # ── Frontend Angular (défaut) ────────────────────────
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "todo-enterprise.fullname" . }}-angular
+                port:
+                  name: http
+{{- end }}

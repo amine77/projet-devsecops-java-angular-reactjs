@@ -12,7 +12,7 @@ Ce guide explique comment provisionner et gérer l'infrastructure AWS du projet 
 2. [Architecture des deux stacks](#2-architecture-des-deux-stacks)
 3. [Bootstrap — fait une seule fois](#3-bootstrap--fait-une-seule-fois)
 4. [Stack Permanent — VPC · ECR · IAM](#4-stack-permanent--vpc--ecr--iam)
-5. [Stack Ephemeral — RDS · Redis · ECS · ALB](#5-stack-ephemeral--rds--redis--ecs--alb)
+5. [Stack Ephemeral — EC2 t2.micro + Minikube](#5-stack-ephemeral--ec2-t2micro--minikube)
 6. [Routine quotidienne](#6-routine-quotidienne)
 7. [Déployer une nouvelle version de l'app](#7-déployer-une-nouvelle-version-de-lapp)
 8. [Estimation des coûts](#8-estimation-des-coûts)
@@ -71,16 +71,14 @@ terraform/
 │   └── outputs.tf
 │
 └── ephemeral/      ← Destroy le soir pour économiser
-    ├── rds.tf          PostgreSQL 16 (db.t3.micro)
-    ├── elasticache.tf  Redis 7 (cache.t3.micro)
-    ├── ecs.tf          ECS Fargate (3 services)
-    ├── alb.tf          Application Load Balancer
-    ├── security-groups.tf
-    ├── secrets.tf      Secrets Manager (credentials DB)
-    ├── cloudwatch.tf   Logs (7 jours de rétention)
-    ├── main.tf         Provider + remote state permanent
+    ├── ec2-minikube.tf  EC2 t2.micro + Minikube (Free Tier)
+    ├── scripts/
+    │   └── setup-minikube.sh  Installation Docker + Minikube + Helm
+    ├── main.tf          Provider + remote state permanent
     ├── variables.tf
     └── outputs.tf
+    (ecs.tf, alb.tf, rds.tf, elasticache.tf, security-groups.tf,
+     secrets.tf, cloudwatch.tf → désactivés, remplacés par ec2-minikube.tf)
 ```
 
 ### Pourquoi deux stacks ?
@@ -250,11 +248,27 @@ Après le premier apply permanent, copier ces valeurs dans **GitHub > Settings >
 
 ---
 
-## 5. Stack Ephemeral — RDS · Redis · ECS · ALB
+## 5. Stack Ephemeral — EC2 t2.micro + Minikube
+
+> **Migration Phase 7** : L'architecture ECS Fargate + RDS + ElastiCache + ALB a été remplacée par une instance EC2 t2.micro (Free Tier) faisant tourner Minikube. Coût : **$0/mois** (an 1) au lieu de ~$66/mois.
+
+### Architecture
+
+```
+EC2 t2.micro (1 vCPU, 1 GB RAM + 2 GB swap)
+  └── Minikube (--driver=docker)
+       ├── Namespace todo-app
+       │     ├── Pod todo-backend     (Spring Boot — image ECR)
+       │     ├── Pod todo-frontend-angular (Nginx — image ECR)
+       │     └── Pod todo-frontend-react   (Nginx — image ECR)
+       └── Namespace data
+             ├── StatefulSet postgresql  (chart Bitnami)
+             └── StatefulSet redis       (chart Bitnami)
+```
 
 ### Pré-requis : pousser les images Docker dans ECR
 
-Avant le premier `apply` ephemeral, ECS a besoin d'images Docker dans ECR. Deux options :
+Avant le premier `apply`, Minikube a besoin d'images Docker dans ECR.
 
 **Option A — via le CI GitHub Actions** (recommandé) :
 Merger une PR sur master → le workflow `cd.yml` build et pousse automatiquement les images.
@@ -272,15 +286,17 @@ docker build -f infrastructure/Dockerfile -t todo-backend:latest .
 docker tag todo-backend:latest `
   583931058666.dkr.ecr.eu-west-3.amazonaws.com/todo-backend:latest
 docker push 583931058666.dkr.ecr.eu-west-3.amazonaws.com/todo-backend:latest
+```
 
-# Même chose pour les frontends
-cd ../frontend-angular
-docker build -t 583931058666.dkr.ecr.eu-west-3.amazonaws.com/todo-frontend-angular:latest .
-docker push 583931058666.dkr.ecr.eu-west-3.amazonaws.com/todo-frontend-angular:latest
+### Générer la clé SSH (une seule fois)
 
-cd ../frontend-react
-docker build -t 583931058666.dkr.ecr.eu-west-3.amazonaws.com/todo-frontend-react:latest .
-docker push 583931058666.dkr.ecr.eu-west-3.amazonaws.com/todo-frontend-react:latest
+```bash
+ssh-keygen -t ed25519 -C "todo-minikube" -f ~/.ssh/todo-minikube
+```
+
+Copier le contenu de `~/.ssh/todo-minikube.pub` dans `terraform.tfvars` :
+```hcl
+ec2_ssh_public_key = "ssh-ed25519 AAAA..."
 ```
 
 ### Démarrer l'infrastructure (le matin)
@@ -290,49 +306,115 @@ cd terraform/ephemeral
 
 # Première fois seulement
 Copy-Item terraform.tfvars.example terraform.tfvars
+# Renseigner ec2_ssh_public_key dans terraform.tfvars
 terraform init
 
 # Chaque matin
 terraform apply
 ```
 
-Durée : **8-12 minutes** (RDS prend le plus de temps à démarrer).
+Durée : **2-3 minutes** pour créer l'EC2 + EIP. Puis **5-8 minutes** supplémentaires pour que le script `setup-minikube.sh` installe Docker, Minikube, kubectl, Helm.
 
 ### Ce que ça crée
 
 ```
-aws_security_group.alb              SG : internet → ALB (80/443)
-aws_security_group.ecs_backend      SG : ALB → backend (8080)
-aws_security_group.ecs_frontend     SG : ALB → frontends (80)
-aws_security_group.rds              SG : backend → PostgreSQL (5432)
-aws_security_group.redis            SG : backend → Redis (6379)
-aws_db_instance.main                RDS PostgreSQL 16 (db.t3.micro, 20GB)
-aws_elasticache_cluster.main        Redis 7 (cache.t3.micro)
-aws_cloudwatch_log_group.backend    /ecs/todo-enterprise/backend (7j)
-aws_cloudwatch_log_group.frontend_* /ecs/todo-enterprise/frontend-* (7j)
-aws_lb.main                         ALB public (subnets publics)
-aws_lb_target_group.backend         :8080 /actuator/health
-aws_lb_target_group.frontend_*      :80 /health
-aws_lb_listener.http                Port 80 → Angular (défaut)
-aws_lb_listener_rule.api            /api/* → backend
-aws_lb_listener_rule.react          Host: react.* → React
-aws_secretsmanager_secret.db        todo-enterprise/database (mot de passe auto)
-aws_secretsmanager_secret.app_config todo-enterprise/app-config
-aws_ecs_cluster.main                todo-enterprise-cluster (Fargate)
-aws_ecs_task_definition.backend     256 CPU / 512 MB / Spring Boot
-aws_ecs_task_definition.frontend_*  256 CPU / 256 MB / Nginx
-aws_ecs_service.backend             1 replica, rolling update
-aws_ecs_service.frontend_*          1 replica chacun
+data.aws_ami.ubuntu_2404            Ubuntu 24.04 LTS (Canonical officiel)
+aws_security_group.minikube         SG : SSH (22), K8s API (6443), HTTP (80), NodePort (30000-32767)
+aws_iam_role.ec2_minikube           Rôle IAM → ECR ReadOnly (pull images)
+aws_iam_instance_profile.ec2_minikube  Profile IAM attaché à l'EC2
+aws_key_pair.minikube               Clé SSH publique
+aws_instance.minikube               EC2 t2.micro / Ubuntu 24.04 / EBS 30 GB gp3
+aws_eip.minikube                    IP publique fixe (Elastic IP)
 ```
 
-### URL d'accès après apply
+### Étapes post-apply (à faire une seule fois)
 
 ```powershell
-terraform output alb_dns_name
-# → http://todo-enterprise-alb-1234567890.eu-west-3.elb.amazonaws.com
+# 1. Afficher l'IP et les instructions
+terraform output kubectl_config_instructions
 
-terraform output alb_dns_api
-# → http://todo-enterprise-alb-....elb.amazonaws.com/api
+# 2. Attendre 8 minutes que Minikube s'installe, puis se connecter
+ssh -i ~/.ssh/todo-minikube ubuntu@<IP_PUBLIQUE>
+
+# 3. Vérifier que Minikube tourne
+minikube status
+kubectl get nodes
+
+# 4. Récupérer le kubeconfig en base64
+cat ~/.kube/config | base64 -w0
+
+# 5. Copier dans GitHub Secrets
+# Repo → Settings → Secrets and variables → Actions
+# → KUBECONFIG_B64 = <valeur base64>
+# → EC2_HOST = <IP_PUBLIQUE>
+```
+
+### Installer PostgreSQL et Redis sur Minikube
+
+Une fois le kubeconfig configuré :
+
+```bash
+# Depuis la machine locale (avec kubectl configuré) ou depuis l'EC2 en SSH
+
+# Ajouter le repo Bitnami
+helm repo add bitnami https://charts.bitnami.com/bitnami
+helm repo update
+
+# PostgreSQL dans le namespace data
+helm install postgres bitnami/postgresql \
+  --namespace data \
+  --create-namespace \
+  -f helm/values/postgres-values.yaml \
+  --wait
+
+# Redis dans le namespace data
+helm install redis bitnami/redis \
+  --namespace data \
+  --create-namespace \
+  -f helm/values/redis-values.yaml \
+  --wait
+```
+
+### Déployer l'application manuellement
+
+```bash
+# Premier déploiement (ou mise à jour)
+helm upgrade --install todo-enterprise ./helm/todo-enterprise \
+  --namespace todo-app \
+  --create-namespace \
+  --set ecr.registry=583931058666.dkr.ecr.eu-west-3.amazonaws.com \
+  --set backend.image.tag=latest \
+  --set frontendAngular.image.tag=latest \
+  --set frontendReact.image.tag=latest \
+  --wait --atomic
+```
+
+### Accéder à l'application
+
+```bash
+# Vérifier les pods
+kubectl get pods -n todo-app
+
+# Vérifier l'Ingress
+kubectl get ingress -n todo-app
+
+# Ajouter dans /etc/hosts (ou C:\Windows\System32\drivers\etc\hosts)
+# <IP_PUBLIQUE>  todo.local
+
+# Accéder : http://todo.local
+```
+
+### URL d'accès après déploiement
+
+```powershell
+terraform output ec2_public_ip
+# → X.X.X.X (IP publique fixe)
+
+terraform output ssh_command
+# → ssh -i ~/.ssh/todo-minikube ubuntu@X.X.X.X
+
+terraform output kubernetes_api_url
+# → https://X.X.X.X:8443
 ```
 
 ### Arrêter l'infrastructure (le soir)
@@ -340,18 +422,17 @@ terraform output alb_dns_api
 ```powershell
 cd terraform/ephemeral
 
-# Tout détruire (2-3 minutes)
+# Tout détruire (1-2 minutes)
 terraform destroy
 ```
 
-Répondre `yes`. Toutes les ressources ephemeral sont supprimées. **Le VPC, ECR et les rôles IAM restent intacts.**
+Répondre `yes`. L'EC2, l'EIP et le Security Group sont supprimés. **Le VPC, ECR et les rôles IAM restent intacts.**
 
-> ⚠️ `terraform destroy` supprime la base de données RDS. Les données sont perdues.  
-> Si vous avez des données importantes : faire un snapshot manuel avant.
+> ⚠️ `terraform destroy` supprime le volume EBS : les données PostgreSQL et Redis sont perdues.  
+> Si vous avez des données importantes, faire une sauvegarde avant :
 > ```bash
-> aws rds create-db-snapshot \
->   --db-instance-identifier todo-enterprise-db \
->   --db-snapshot-identifier todo-backup-$(date +%Y%m%d)
+> kubectl exec -n data postgres-postgresql-0 -- \
+>   pg_dump -U todouser tododb > backup.sql
 > ```
 
 ---
@@ -451,9 +532,9 @@ aws ecs update-service `
 | ECR stockage (~3 images × 300 MB) | ~0.09€ |
 | **Total permanent** | **~0€/mois** |
 
-> 💡 Sans NAT Gateway, le stack permanent ne coûte pratiquement rien. En production, on le réintroduit (voir [Remettre un NAT Gateway](#quand-remettre-un-nat-gateway)).
+> Sans NAT Gateway, le stack permanent ne coûte pratiquement rien.
 
-### Coûts ephemeral (selon usage)
+### Coûts ephemeral — AVANT (ECS Fargate + RDS + ALB)
 
 | Ressource | Coût/heure | 8h × 5j/sem | 24h/7j/sem |
 |-----------|-----------|-------------|-----------|
@@ -463,32 +544,39 @@ aws ecs update-service `
 | ECS Fargate angular (0.25 vCPU, 0.25GB) | ~0.010€ | ~1.6€ | ~7€ |
 | ECS Fargate react (0.25 vCPU, 0.25GB) | ~0.010€ | ~1.6€ | ~7€ |
 | ALB | 0.025€ | ~4€ | ~18€ |
-| **Total ephemeral** | | **~15€/mois** | **~66€/mois** |
+| **Total ancien stack** | | **~15€/mois** | **~66€/mois** |
 
-### Coût total estimé (strategy ephemeral, sans NAT Gateway)
+### Coûts ephemeral — APRÈS (EC2 t2.micro + Minikube)
+
+| Ressource | Coût | Détail |
+|-----------|------|--------|
+| EC2 t2.micro | **$0/mois** | Free Tier : 750h/mois (an 1) |
+| EBS 30 GB gp3 | **$0/mois** | Free Tier : 30 GB/mois (an 1) |
+| Elastic IP (associée) | **$0/mois** | Gratuit si instance en cours d'exécution |
+| PostgreSQL (pod Minikube) | **$0** | Inclus dans l'EC2 |
+| Redis (pod Minikube) | **$0** | Inclus dans l'EC2 |
+| **Total nouveau stack (an 1)** | | **$0/mois** |
+| **Total nouveau stack (an 2+)** | | **~$11.50/mois** |
+
+> **Attention EIP** : si l'EC2 est arrêté sans `terraform destroy`, l'EIP coûte ~$0.005/h (~$3.60/mois). Toujours faire `terraform destroy` pour libérer l'EIP.
+
+### Comparaison avant/après
 
 ```
-Permanent :  ~0€/mois  (VPC Endpoint S3 gratuit, ECR ~0.09€)
-Ephemeral :  ~15€/mois (8h/j × 5j/semaine, Free Tier actif)
-─────────────────────────────────────────────────────────────
-Total :      ~15€/mois
-```
-
-Comparaison avec l'architecture initiale (avec NAT Gateway) :
-```
-Avant :  ~47€/mois
-Après :  ~15€/mois  → économie de 68%
+Ancien stack (ECS + RDS + ALB) :  ~66€/mois (24h/7j)
+Nouveau stack (EC2 Minikube) :    $0/mois (an 1)   → économie de 100% (Free Tier)
+                                  ~11.50$/mois (an 2+) → économie de 83%
 ```
 
 ### Alertes de budget AWS (recommandé)
 
 ```bash
-# Créer une alerte si les coûts dépassent 60€/mois
+# Créer une alerte si les coûts dépassent 10$/mois (détecte tout dépassement Free Tier)
 aws budgets create-budget \
   --account-id 583931058666 \
   --budget '{
     "BudgetName": "todo-enterprise-monthly",
-    "BudgetLimit": {"Amount": "60", "Unit": "USD"},
+    "BudgetLimit": {"Amount": "10", "Unit": "USD"},
     "TimeUnit": "MONTHLY",
     "BudgetType": "COST"
   }' \
@@ -746,4 +834,4 @@ Coût ajouté : ~32€/mois (1 NAT Gateway). Pour la HA en prod : 2 NAT Gateways
 
 ---
 
-*Mis à jour : Phase 6 — Infrastructure Terraform AWS (mode économique sans NAT Gateway)*
+*Mis à jour : Phase 7 — Migration ECS → EC2 Minikube (Free Tier, $0/mois)*

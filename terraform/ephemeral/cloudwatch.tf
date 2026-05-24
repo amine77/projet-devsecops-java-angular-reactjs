@@ -1,40 +1,13 @@
 # ══════════════════════════════════════════════════════════════
-#  CLOUDWATCH LOGS — terraform/ephemeral/cloudwatch.tf
+#  FICHIER DÉSACTIVÉ — remplacé par ec2-minikube.tf
 # ══════════════════════════════════════════════════════════════
 #
-#  Log groups CloudWatch pour chaque service ECS.
+#  L'infrastructure ECS Fargate + RDS + ElastiCache + ALB a été
+#  remplacée par une instance EC2 t2.micro (Free Tier) faisant
+#  tourner Minikube. PostgreSQL et Redis s'exécutent comme pods
+#  Kubernetes via les charts Helm Bitnami.
 #
-#  ECS FARGATE + CLOUDWATCH :
-#  → ECS envoie automatiquement les logs stdout/stderr vers CloudWatch
-#  → Configuré dans la task definition via awslogs driver
-#  → Pas besoin d'agent de logging dans le container
-#
-#  RÉTENTION :
-#  → 7 jours en dev (économies)
-#  → 30-90 jours en prod (conformité, audit)
-#  → Passé ce délai, les logs sont automatiquement supprimés
-#
-#  COÛT CLOUDWATCH :
-#  → 0.57$/GB ingested + 0.03$/GB/mois stocké
-#  → Application légère : quelques euros/mois max
-
-resource "aws_cloudwatch_log_group" "backend" {
-  name              = "/ecs/todo-enterprise/backend"
-  retention_in_days = 7
-
-  tags = { Name = "todo-backend-logs" }
-}
-
-resource "aws_cloudwatch_log_group" "frontend_angular" {
-  name              = "/ecs/todo-enterprise/frontend-angular"
-  retention_in_days = 7
-
-  tags = { Name = "todo-frontend-angular-logs" }
-}
-
-resource "aws_cloudwatch_log_group" "frontend_react" {
-  name              = "/ecs/todo-enterprise/frontend-react"
-  retention_in_days = 7
-
-  tags = { Name = "todo-frontend-react-logs" }
-}
+#  Avantages :
+#  → Coût : ~$0/mois (Free Tier 12 mois) vs ~$66/mois (ECS)
+#  → Apprentissage Kubernetes et Helm directement dans le pipeline CD
+#  → Même commandes kubectl/helm que EKS en production

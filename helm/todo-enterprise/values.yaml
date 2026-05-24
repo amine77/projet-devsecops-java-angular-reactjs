@@ -1,0 +1,134 @@
+# ══════════════════════════════════════════════════════════════
+#  VALUES PAR DÉFAUT — helm/todo-enterprise/values.yaml
+# ══════════════════════════════════════════════════════════════
+#
+#  Ces valeurs sont les défauts. On peut les surcharger avec :
+#    --set clé=valeur (pipeline CI/CD)
+#    -f mon-fichier-values.yaml (environnement spécifique)
+#
+#  EXEMPLE pipeline CI/CD :
+#  helm upgrade --install todo-enterprise ./helm/todo-enterprise \
+#    --set backend.image.tag=${{ github.sha }} \
+#    --set ecr.registry=${{ env.ECR_REGISTRY }}
+
+# ── Registry ECR ──────────────────────────────────────────────
+ecr:
+  # Injecté par le pipeline : <account_id>.dkr.ecr.<region>.amazonaws.com
+  registry: "583931058666.dkr.ecr.eu-west-3.amazonaws.com"
+  # Secret Kubernetes créé par setup-minikube.sh pour pull ECR
+  pullSecret: "ecr-secret"
+
+# ── Backend Spring Boot ───────────────────────────────────────
+backend:
+  # Nombre de replicas (1 suffit sur t2.micro — peu de RAM disponible)
+  replicaCount: 1
+
+  image:
+    repository: todo-backend    # Nom du repo ECR
+    tag: latest                 # Surchargé par le pipeline : ${{ github.sha }}
+    pullPolicy: Always          # Toujours re-puller (évite les caches stale)
+
+  service:
+    type: ClusterIP             # Accessible seulement dans le cluster
+    port: 8080                  # Port Spring Boot
+
+  # Ressources CPU/RAM allouées au pod
+  # Sur t2.micro (1 GB RAM total), Spring Boot prend ~400 MB
+  resources:
+    requests:
+      memory: "256Mi"
+      cpu: "100m"              # 0.1 vCPU
+    limits:
+      memory: "512Mi"
+      cpu: "500m"              # 0.5 vCPU max
+
+  # Profil Spring Boot actif
+  springProfile: "local"       # local | aws
+
+  # Health checks Kubernetes
+  # initialDelaySeconds : Spring Boot prend ~30s à démarrer
+  livenessProbe:
+    path: /actuator/health
+    initialDelaySeconds: 60
+    periodSeconds: 30
+    timeoutSeconds: 10
+    failureThreshold: 3
+
+  readinessProbe:
+    path: /actuator/health/readiness
+    initialDelaySeconds: 30
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3
+
+# ── Frontend Angular ─────────────────────────────────────────
+frontendAngular:
+  replicaCount: 1
+
+  image:
+    repository: todo-frontend-angular
+    tag: latest
+    pullPolicy: Always
+
+  service:
+    type: ClusterIP
+    port: 80
+
+  resources:
+    requests:
+      memory: "32Mi"
+      cpu: "10m"
+    limits:
+      memory: "64Mi"
+      cpu: "100m"
+
+# ── Frontend React ────────────────────────────────────────────
+frontendReact:
+  replicaCount: 1
+
+  image:
+    repository: todo-frontend-react
+    tag: latest
+    pullPolicy: Always
+
+  service:
+    type: ClusterIP
+    port: 80
+
+  resources:
+    requests:
+      memory: "32Mi"
+      cpu: "10m"
+    limits:
+      memory: "64Mi"
+      cpu: "100m"
+
+# ── Dépendances : PostgreSQL (chart Bitnami) ─────────────────
+postgres:
+  # Adresse du service PostgreSQL (Bitnami chart dans namespace data)
+  host: "postgres-postgresql.data.svc.cluster.local"
+  port: 5432
+  database: "tododb"
+  username: "todouser"
+  # Mot de passe injecté depuis un Secret Kubernetes
+  secretName: "postgres-credentials"
+  secretKey: "password"
+
+# ── Dépendances : Redis (chart Bitnami) ──────────────────────
+redis:
+  # Adresse du service Redis (Bitnami chart dans namespace data)
+  host: "redis-master.data.svc.cluster.local"
+  port: 6379
+
+# ── Ingress NGINX ────────────────────────────────────────────
+ingress:
+  enabled: true
+  className: "nginx"     # Addon Minikube activé par setup-minikube.sh
+
+  # Hostname local (ajouter dans /etc/hosts : <minikube-ip> todo.local)
+  host: "todo.local"
+
+  # Routes :
+  # /api/*     → backend:8080
+  # /          → frontend-angular:80 (défaut)
+  # /react/    → frontend-react:80

@@ -1,0 +1,27 @@
+# ══════════════════════════════════════════════════════════════
+#  SERVICE — Backend Spring Boot
+# ══════════════════════════════════════════════════════════════
+#
+#  Service Kubernetes : point d'entrée stable pour les pods backend.
+#  L'Ingress route /api/* vers ce Service.
+#
+#  TYPE ClusterIP : accessible seulement depuis l'intérieur du cluster.
+#  L'Ingress Controller NGINX fait le pont entre l'extérieur et ce Service.
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "todo-enterprise.fullname" . }}-backend
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "todo-enterprise.labels" . | nindent 4 }}
+    app.kubernetes.io/component: backend
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+      protocol: TCP
+  selector:
+    {{- include "todo-enterprise.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: backend

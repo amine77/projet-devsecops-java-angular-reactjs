@@ -1,91 +1,41 @@
 # ══════════════════════════════════════════════════════════════
 #  VARIABLES — terraform/ephemeral/variables.tf
+#  Stack éphémère : EC2 Minikube (remplace ECS + RDS + ALB)
 # ══════════════════════════════════════════════════════════════
 
 variable "environment" {
-  description = "Environnement de deploiement"
+  description = "Environnement de déploiement"
   type        = string
   default     = "dev"
 }
 
-# ── Base de données ───────────────────────────────────────────
+# ── EC2 Minikube ──────────────────────────────────────────────
 
-variable "db_name" {
-  description = "Nom de la base de donnees PostgreSQL"
+variable "ec2_ssh_public_key" {
+  description = <<-EOT
+    Clé SSH publique pour accéder à l'EC2 Minikube.
+    Générer avec : ssh-keygen -t ed25519 -C "todo-minikube" -f ~/.ssh/todo-minikube
+    Puis copier le contenu de ~/.ssh/todo-minikube.pub ici.
+  EOT
   type        = string
-  default     = "tododb"    # Même valeur que docker-compose.yml
 }
 
-variable "db_username" {
-  description = "Utilisateur PostgreSQL"
+variable "ec2_instance_type" {
+  description = "Type d'instance EC2. t2.micro = Free Tier (750h/mois gratuit)"
   type        = string
-  default     = "todouser"
+  default     = "t2.micro"
 }
 
-variable "db_instance_class" {
-  description = "Type d'instance RDS"
-  type        = string
-  default     = "db.t3.micro"
-  # db.t3.micro = Free Tier eligible (750h/mois la première année)
-  # En prod : db.t3.small ou db.t3.medium
-}
-
-# ── Cache ─────────────────────────────────────────────────────
-
-variable "redis_node_type" {
-  description = "Type de noeud ElastiCache"
-  type        = string
-  default     = "cache.t3.micro"
-}
-
-# ── ECS / Containers ─────────────────────────────────────────
+# ── Images Docker ─────────────────────────────────────────────
 
 variable "backend_image_tag" {
-  description = "Tag de l'image Docker backend (SHA commit)"
+  description = "Tag de l'image Docker backend (SHA commit Git)"
   type        = string
   default     = "latest"
 }
 
-variable "backend_cpu" {
-  description = "CPU alloue au container backend (1 vCPU = 1024)"
-  type        = number
-  default     = 256    # 0.25 vCPU — suffisant pour une app Spring Boot dev
-}
-
-variable "backend_memory" {
-  description = "Memoire allouee au container backend (MB)"
-  type        = number
-  default     = 512    # 512 MB — Spring Boot JVM needs at least 256MB
-}
-
-variable "backend_desired_count" {
-  description = "Nombre de replicas ECS backend"
-  type        = number
-  default     = 1    # 1 en dev, 2+ en prod pour la HA
-}
-
-variable "frontend_cpu" {
-  description = "CPU alloue aux containers frontend Nginx"
-  type        = number
-  default     = 256
-}
-
-variable "frontend_memory" {
-  description = "Memoire allouee aux containers frontend Nginx (MB)"
-  type        = number
-  default     = 256    # Nginx est très léger
-}
-
-variable "frontend_desired_count" {
-  description = "Nombre de replicas ECS frontend"
-  type        = number
-  default     = 1
-}
-
-# ── DNS / ACM ────────────────────────────────────────────────
-
-variable "domain_name" {
-  description = "Nom de domaine principal (ex: todo-enterprise.com)"
+variable "frontend_image_tag" {
+  description = "Tag des images Docker frontend (SHA commit Git)"
   type        = string
-  default     = ""    # Vide = pas de HTTPS en dev (HTTP seulement)
+  default     = "latest"
 }

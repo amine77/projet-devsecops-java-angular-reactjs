@@ -1,29 +1,33 @@
 # ══════════════════════════════════════════════════════════════
-#  WORKFLOW CD — Deploiement continu vers AWS
+#  WORKFLOW CD — Déploiement continu vers AWS (EC2 Minikube)
 #  Fichier : .github/workflows/cd.yml
 # ══════════════════════════════════════════════════════════════
 #
-#  Ce workflow déploie l'application sur AWS ECS Fargate après
-#  chaque push sur master (si le CI passe).
+#  Ce workflow déploie l'application sur un EC2 t2.micro (Free Tier)
+#  faisant tourner Minikube, après chaque push sur master.
 #
-#  ARCHITECTURE DE DEPLOIEMENT :
+#  ARCHITECTURE DE DÉPLOIEMENT :
 #
 #  GitHub Actions
 #    → Build Docker images (3 images : backend, angular, react)
 #    → Push vers Amazon ECR (Elastic Container Registry)
-#    → Mise à jour des task definitions ECS
-#    → Force new deployment → ECS rolling update
+#    → helm upgrade via kubeconfig → Minikube sur EC2
 #
-#  ECS FARGATE :
-#  → Fargate = serverless containers (pas de gestion de serveurs EC2)
-#  → Rolling update : nouveaux containers lancés avant d'arrêter les anciens
-#    Zéro downtime si au moins 2 replicas
-#  → Health check ALB : ECS attend que le /health réponde avant de couper l'ancienne version
+#  MINIKUBE SUR EC2 (remplace ECS Fargate) :
+#  → EC2 t2.micro = Free Tier (750h/mois gratuit)
+#  → Minikube = Kubernetes mono-nœud sur l'EC2
+#  → helm upgrade --install → rolling update sans downtime
+#  → PostgreSQL + Redis = pods Kubernetes (charts Bitnami)
+#
+#  AVANTAGES vs ECS Fargate :
+#  → Coût : $0/mois (Free Tier) vs ~$66/mois (ECS+RDS+Redis+ALB)
+#  → Apprentissage : kubectl/helm = mêmes commandes que EKS en prod
+#  → Simplicité : un seul job deploy (helm) vs 2 jobs ECS séparés
 #
 #  ECR :
 #  → Registry Docker privé géré par AWS
 #  → Images immutables : le tag = SHA du commit Git
-#  → Lifecycle policy : supprime les images de plus de 30 jours (économies)
+#  → Lifecycle policy : supprime les images de plus de 30 jours
 #
 #  AUTHENTIFICATION AWS :
 #  → OIDC (OpenID Connect) : GitHub Actions s'authentifie auprès d'AWS
@@ -32,13 +36,14 @@
 #  → Rôle IAM avec permissions minimales (principe du moindre privilège)
 #
 #  SECRETS GITHUB REQUIS :
-#  → AWS_ACCOUNT_ID : ID du compte AWS (12 chiffres)
-#  → AWS_REGION : ex. eu-west-1
-#  → AWS_ROLE_TO_ASSUME : ARN du rôle IAM GitHub Actions
-#  → VITE_OIDC_AUTHORITY : URL Keycloak/Cognito de production
-#  → Plus de clés AWS_ACCESS_KEY_ID/SECRET (remplacées par OIDC !)
+#  → AWS_ACCOUNT_ID    : ID du compte AWS (12 chiffres)
+#  → AWS_REGION        : ex. eu-west-3
+#  → AWS_ROLE_TO_ASSUME: ARN du rôle IAM GitHub Actions (OIDC)
+#  → KUBECONFIG_B64    : kubeconfig Minikube encodé en base64
+#  → VITE_API_URL      : URL de l'API backend (pour le build React)
+#  → VITE_OIDC_AUTHORITY : URL Keycloak/Cognito (pour le build React)
 
-name: CD — Deploy to AWS
+name: CD — Deploy to AWS (Minikube)
 
 on:
   push:
@@ -71,10 +76,6 @@ env:
   IMAGE_TAG: ${{ github.sha }}
 
 jobs:
-
-  # ── Pré-requis : les CIs doivent passer ──────────────────────
-  # Ce job vérifie que les workflows CI ont réussi avant de déployer
-  # (GitHub environments avec required status checks)
 
   # ── Job 1 : Build + Push des images Docker vers ECR ──────────
   build-and-push:
@@ -160,77 +161,133 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-  # ── Job 2 : Déploiement ECS Backend ──────────────────────────
-  deploy-backend:
-    name: Deployer backend ECS
+  # ── Job 2 : Déploiement Helm sur Minikube (EC2) ──────────────
+  #
+  #  Remplace les deux jobs ECS (deploy-backend + deploy-frontends)
+  #  par un seul job helm upgrade idempotent.
+  #
+  #  IDEMPOTENT : on peut relancer ce job 10 fois, le résultat est
+  #  toujours le même. Si le déploiement échoue, --atomic fait
+  #  un rollback automatique vers la version précédente.
+  deploy:
+    name: Deployer sur Minikube (EC2)
     runs-on: ubuntu-latest
     needs: build-and-push
-    environment: production    # Nécessite une approbation manuelle (optionnel)
 
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # ── Authentification AWS (pour renouveler le token ECR) ───
       - name: Configurer les credentials AWS
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
           aws-region: ${{ env.AWS_REGION }}
 
-      - name: Mettre a jour la Task Definition ECS et deployer
-        uses: aws-actions/amazon-ecs-deploy-task-definition@v2
+      - name: Installer kubectl
+        uses: azure/setup-kubectl@v4
         with:
-          # Nom du cluster ECS créé par Terraform
-          cluster: todo-enterprise-cluster
-          # Nom du service ECS (Fargate)
-          service: todo-backend-service
-          # Famille de la task definition (= champ "family" dans Terraform, sans "-task")
-          # IMPORTANT : c'est la valeur de family = "todo-backend", pas le tag Name
-          task-definition: todo-backend
-          # Image à utiliser
-          container-name: todo-backend
-          container-image: ${{ env.ECR_REGISTRY }}/todo-backend:${{ env.IMAGE_TAG }}
-          # wait-for-service-stability : attend que le déploiement soit complet
-          wait-for-service-stability: true
+          version: 'v1.30.0'
 
-  # ── Job 3 : Déploiement ECS Frontends ─────────────────────────
-  deploy-frontends:
-    name: Deployer frontends ECS
-    runs-on: ubuntu-latest
-    needs: build-and-push
-    # Les deux frontends se déploient en même temps (pas de dépendance)
-
-    steps:
-      - name: Configurer les credentials AWS
-        uses: aws-actions/configure-aws-credentials@v4
+      - name: Installer Helm
+        uses: azure/setup-helm@v4
         with:
-          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
-          aws-region: ${{ env.AWS_REGION }}
+          version: '3.15.0'
 
-      - name: Deployer Angular
-        uses: aws-actions/amazon-ecs-deploy-task-definition@v2
-        with:
-          cluster: todo-enterprise-cluster
-          service: todo-frontend-angular-service
-          # Famille Terraform : family = "todo-frontend-angular"
-          task-definition: todo-frontend-angular
-          container-name: todo-frontend-angular
-          container-image: ${{ env.ECR_REGISTRY }}/todo-frontend-angular:${{ env.IMAGE_TAG }}
-          wait-for-service-stability: true
+      - name: Configurer kubeconfig
+        run: |
+          # Décoder le kubeconfig depuis le secret GitHub (base64)
+          # Ce kubeconfig pointe vers l'API server Minikube sur l'EC2
+          mkdir -p ~/.kube
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > ~/.kube/config
+          chmod 600 ~/.kube/config
 
-      - name: Deployer React
-        uses: aws-actions/amazon-ecs-deploy-task-definition@v2
-        with:
-          cluster: todo-enterprise-cluster
-          service: todo-frontend-react-service
-          # Famille Terraform : family = "todo-frontend-react"
-          task-definition: todo-frontend-react
-          container-name: todo-frontend-react
-          container-image: ${{ env.ECR_REGISTRY }}/todo-frontend-react:${{ env.IMAGE_TAG }}
-          wait-for-service-stability: true
+          # Vérifier la connexion au cluster
+          kubectl cluster-info
+          kubectl get nodes
 
-  # ── Job 4 : Notification de fin de deploiement ───────────────
+      - name: Renouveler le secret ECR (token expire apres 12h)
+        run: |
+          # Le token ECR expire toutes les 12h → le renouveler à chaque déploiement
+          # L'instance profile IAM de l'EC2 ne peut pas le faire automatiquement
+          # depuis GitHub Actions → on passe par le rôle OIDC
+
+          # Récupérer un nouveau token ECR
+          ECR_TOKEN=$(aws ecr get-login-password --region ${{ env.AWS_REGION }})
+
+          # Mettre à jour le secret Kubernetes pour que les pods puissent puller
+          kubectl create secret docker-registry ecr-secret \
+            --docker-server=${{ env.ECR_REGISTRY }} \
+            --docker-username=AWS \
+            --docker-password="${ECR_TOKEN}" \
+            --namespace=todo-app \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+      - name: Installer les dependances Helm (PostgreSQL + Redis) si absent
+        run: |
+          # Ajouter le repo Bitnami si absent
+          helm repo add bitnami https://charts.bitnami.com/bitnami
+          helm repo update
+
+          # Installer PostgreSQL si pas déjà présent
+          # --wait : attendre que PostgreSQL soit ready avant de continuer
+          if ! helm status postgres -n data &>/dev/null; then
+            echo "Installation PostgreSQL..."
+            helm install postgres bitnami/postgresql \
+              --namespace data \
+              --create-namespace \
+              -f helm/values/postgres-values.yaml \
+              --wait --timeout=5m
+          else
+            echo "PostgreSQL deja installe."
+          fi
+
+          # Installer Redis si pas déjà présent
+          if ! helm status redis -n data &>/dev/null; then
+            echo "Installation Redis..."
+            helm install redis bitnami/redis \
+              --namespace data \
+              --create-namespace \
+              -f helm/values/redis-values.yaml \
+              --wait --timeout=3m
+          else
+            echo "Redis deja installe."
+          fi
+
+      - name: Deployer l'application avec Helm
+        run: |
+          # helm upgrade --install :
+          # → upgrade si le chart existe déjà (mise à jour)
+          # → install si c'est le premier déploiement
+          # C'est la commande idempotente standard pour le CD
+
+          helm upgrade --install todo-enterprise ./helm/todo-enterprise \
+            --namespace todo-app \
+            --create-namespace \
+            --set ecr.registry=${{ env.ECR_REGISTRY }} \
+            --set backend.image.tag=${{ env.IMAGE_TAG }} \
+            --set frontendAngular.image.tag=${{ env.IMAGE_TAG }} \
+            --set frontendReact.image.tag=${{ env.IMAGE_TAG }} \
+            --wait \
+            --timeout=5m \
+            --atomic
+
+          # --atomic : si le déploiement échoue, rollback automatique
+          # vers la version précédente (zéro downtime garanti)
+
+      - name: Verifier le deploiement
+        run: |
+          kubectl get pods -n todo-app
+          kubectl get services -n todo-app
+          kubectl get ingress -n todo-app
+          echo "=== Deploiement reussi — commit ${{ env.IMAGE_TAG }} ==="
+
+  # ── Job 3 : Notification de fin de déploiement ───────────────
   notify:
     name: Notification
     runs-on: ubuntu-latest
-    needs: [ deploy-backend, deploy-frontends ]
+    needs: [ deploy ]
     if: always()    # Toujours notifier, succès ou échec
 
     steps:
@@ -239,7 +296,6 @@ jobs:
           echo "Deploiement termine"
           echo "Commit : ${{ github.sha }}"
           echo "Auteur : ${{ github.actor }}"
-          echo "Backend : ${{ needs.deploy-backend.result }}"
-          echo "Frontends : ${{ needs.deploy-frontends.result }}"
+          echo "Deploiement Helm : ${{ needs.deploy.result }}"
           # En production : envoyer une notification Slack/Teams/PagerDuty
           # curl -X POST $SLACK_WEBHOOK -d '{"text":"Deploy OK"}'

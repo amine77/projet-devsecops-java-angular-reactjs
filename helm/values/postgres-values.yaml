@@ -1,47 +1,39 @@
-# ============================================================
-#  PostgreSQL 16 — Bitnami Chart — Minikube (namespace: data)
+# ══════════════════════════════════════════════════════════════
+#  VALUES BITNAMI POSTGRESQL
 #  helm install postgres bitnami/postgresql -n data -f helm/values/postgres-values.yaml
-# ============================================================
+# ══════════════════════════════════════════════════════════════
+#
+#  Chart Bitnami PostgreSQL — options minimales pour t2.micro
+#  Doc : https://github.com/bitnami/charts/tree/main/bitnami/postgresql
 
 auth:
-  username: todouser
-  password: todopass
+  # Nom de la base de données créée automatiquement
   database: tododb
-  # Le user postgres superadmin (pour migrations urgentes)
-  postgresPassword: superadminpass
+  # Utilisateur applicatif (pas postgres superuser)
+  username: todouser
+  # Mot de passe (à changer en prod — utiliser un Secret externe)
+  password: "todopassword"
 
+# ── Ressources ────────────────────────────────────────────────
+# Minimales pour un t2.micro (1GB RAM total)
 primary:
-  persistence:
-    enabled: true
-    size: 2Gi
-    storageClass: standard   # StorageClass Minikube
-
   resources:
     requests:
-      memory: 256Mi
-      cpu: 100m
+      memory: "128Mi"
+      cpu: "50m"
     limits:
-      memory: 512Mi
-      cpu: 500m
+      memory: "256Mi"
+      cpu: "300m"
 
-  # Paramètres PostgreSQL optimisés pour un dev local
-  extendedConfiguration: |
-    max_connections = 50
-    shared_buffers = 64MB
-    work_mem = 4MB
-    log_min_duration_statement = 1000
+  # Persistence : données stockées sur EBS (PersistentVolumeClaim)
+  persistence:
+    enabled: true
+    size: "5Gi"      # 5 GB sur les 30 GB Free Tier
+    storageClass: ""  # Utilise la StorageClass par défaut de Minikube
 
-  # Initialiser la base keycloak au démarrage
-  initdb:
-    scripts:
-      init-keycloak-db.sql: |
-        CREATE DATABASE keycloak;
-        GRANT ALL PRIVILEGES ON DATABASE keycloak TO todouser;
+# ── Une seule instance (pas de HA sur t2.micro) ───────────────
+architecture: standalone
 
-# Pas de réplication en local
-readReplicas:
-  replicaCount: 0
-
-# Metrics Prometheus (désactivé en Phase 1, activé Phase 6)
+# ── Désactiver les métriques (économiser du RAM) ─────────────
 metrics:
   enabled: false

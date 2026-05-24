@@ -1,0 +1,65 @@
+# ══════════════════════════════════════════════════════════════
+#  DEPLOYMENT — Frontend React (Nginx)
+# ══════════════════════════════════════════════════════════════
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "todo-enterprise.fullname" . }}-react
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "todo-enterprise.labels" . | nindent 4 }}
+    app.kubernetes.io/component: frontend-react
+spec:
+  replicas: {{ .Values.frontendReact.replicaCount }}
+
+  selector:
+    matchLabels:
+      {{- include "todo-enterprise.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: frontend-react
+
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+
+  template:
+    metadata:
+      labels:
+        {{- include "todo-enterprise.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: frontend-react
+
+    spec:
+      imagePullSecrets:
+        - name: {{ .Values.ecr.pullSecret }}
+
+      containers:
+        - name: todo-frontend-react
+          image: {{ include "todo-enterprise.reactImage" . }}
+          imagePullPolicy: {{ .Values.frontendReact.image.pullPolicy }}
+
+          ports:
+            - name: http
+              containerPort: 80
+              protocol: TCP
+
+          resources:
+            {{- toYaml .Values.frontendReact.resources | nindent 12 }}
+
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 80
+            initialDelaySeconds: 10
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 80
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3

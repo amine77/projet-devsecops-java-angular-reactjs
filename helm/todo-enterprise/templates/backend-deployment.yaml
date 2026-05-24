@@ -1,0 +1,96 @@
+# ══════════════════════════════════════════════════════════════
+#  DEPLOYMENT — Backend Spring Boot
+# ══════════════════════════════════════════════════════════════
+#
+#  Deployment Kubernetes : maintient N replicas du pod backend.
+#  Kubernetes redémarre automatiquement si le pod crash.
+#
+#  ROLLING UPDATE (strategy par défaut) :
+#  → Kubernetes démarre le nouveau pod AVANT d'arrêter l'ancien
+#  → Pas de downtime si au moins 1 replica
+#  → maxSurge=1 : 1 pod supplémentaire pendant le déploiement
+#  → maxUnavailable=0 : aucun pod indisponible pendant l'update
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "todo-enterprise.fullname" . }}-backend
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "todo-enterprise.labels" . | nindent 4 }}
+    app.kubernetes.io/component: backend
+spec:
+  replicas: {{ .Values.backend.replicaCount }}
+
+  selector:
+    matchLabels:
+      {{- include "todo-enterprise.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: backend
+
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1          # 1 pod extra pendant le déploiement
+      maxUnavailable: 0    # 0 pod indisponible (rolling sans downtime)
+
+  template:
+    metadata:
+      labels:
+        {{- include "todo-enterprise.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: backend
+      annotations:
+        # Force un redéploiement si le ConfigMap change
+        checksum/config: {{ include (print $.Template.BasePath "/backend-configmap.yaml") . | sha256sum }}
+
+    spec:
+      # Credentials ECR pour puller l'image
+      imagePullSecrets:
+        - name: {{ .Values.ecr.pullSecret }}
+
+      containers:
+        - name: todo-backend
+          image: {{ include "todo-enterprise.backendImage" . }}
+          imagePullPolicy: {{ .Values.backend.image.pullPolicy }}
+
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+
+          # Variables d'environnement depuis le ConfigMap
+          envFrom:
+            - configMapRef:
+                name: {{ include "todo-enterprise.fullname" . }}-backend-config
+
+          # Mot de passe PostgreSQL depuis un Secret
+          env:
+            - name: SPRING_DATASOURCE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.postgres.secretName }}
+                  key: {{ .Values.postgres.secretKey }}
+
+          # Ressources CPU/RAM
+          resources:
+            {{- toYaml .Values.backend.resources | nindent 12 }}
+
+          # Liveness probe : Kubernetes redémarre le pod si ça échoue
+          # Vérifie que Spring Boot répond sur /actuator/health
+          livenessProbe:
+            httpGet:
+              path: {{ .Values.backend.livenessProbe.path }}
+              port: 8080
+            initialDelaySeconds: {{ .Values.backend.livenessProbe.initialDelaySeconds }}
+            periodSeconds: {{ .Values.backend.livenessProbe.periodSeconds }}
+            timeoutSeconds: {{ .Values.backend.livenessProbe.timeoutSeconds }}
+            failureThreshold: {{ .Values.backend.livenessProbe.failureThreshold }}
+
+          # Readiness probe : le pod reçoit du trafic seulement si ça passe
+          # Spring Boot peut être "alive" mais pas encore "ready"
+          readinessProbe:
+            httpGet:
+              path: {{ .Values.backend.readinessProbe.path }}
+              port: 8080
+            initialDelaySeconds: {{ .Values.backend.readinessProbe.initialDelaySeconds }}
+            periodSeconds: {{ .Values.backend.readinessProbe.periodSeconds }}
+            timeoutSeconds: {{ .Values.backend.readinessProbe.timeoutSeconds }}
+            failureThreshold: {{ .Values.backend.readinessProbe.failureThreshold }}

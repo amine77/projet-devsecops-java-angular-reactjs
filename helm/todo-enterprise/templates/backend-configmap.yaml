@@ -1,0 +1,41 @@
+# ══════════════════════════════════════════════════════════════
+#  CONFIGMAP — Backend Spring Boot
+#  Variables de configuration NON-sensibles
+# ══════════════════════════════════════════════════════════════
+#
+#  CONFIGMAP vs SECRET :
+#  → ConfigMap : données non-sensibles (profil, port, host DB)
+#  → Secret    : données sensibles (mot de passe DB, token JWT)
+#
+#  Spring Boot lit ces variables via spring.config.import
+#  ou directement comme variables d'environnement.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "todo-enterprise.fullname" . }}-backend-config
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "todo-enterprise.labels" . | nindent 4 }}
+    app.kubernetes.io/component: backend
+data:
+  # Profil Spring Boot actif (local | aws)
+  SPRING_PROFILES_ACTIVE: {{ .Values.backend.springProfile | quote }}
+
+  # Port HTTP Spring Boot
+  SERVER_PORT: "8080"
+
+  # ── PostgreSQL ──────────────────────────────────────────────
+  # URL JDBC vers le pod PostgreSQL (chart Bitnami dans namespace data)
+  # Format: jdbc:postgresql://<service>.<namespace>.svc.cluster.local:<port>/<db>
+  SPRING_DATASOURCE_URL: >-
+    jdbc:postgresql://{{ .Values.postgres.host }}:{{ .Values.postgres.port }}/{{ .Values.postgres.database }}
+  SPRING_DATASOURCE_USERNAME: {{ .Values.postgres.username | quote }}
+
+  # ── Redis ───────────────────────────────────────────────────
+  SPRING_DATA_REDIS_HOST: {{ .Values.redis.host | quote }}
+  SPRING_DATA_REDIS_PORT: {{ .Values.redis.port | quote }}
+
+  # ── JVM ─────────────────────────────────────────────────────
+  # UseContainerSupport : adapte le heap au CPU/RAM du container
+  # MaxRAMPercentage=75 : utilise 75% du RAM limite (512Mi → ~384Mi heap)
+  JAVA_OPTS: "-XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0"

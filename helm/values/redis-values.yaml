@@ -1,37 +1,33 @@
-# ============================================================
-#  Redis 7 — Bitnami Chart — Minikube (namespace: data)
+# ══════════════════════════════════════════════════════════════
+#  VALUES BITNAMI REDIS
 #  helm install redis bitnami/redis -n data -f helm/values/redis-values.yaml
-# ============================================================
-
-# Mode standalone (pas de Sentinel en local — Sentinel = 3 pods)
-architecture: standalone
+# ══════════════════════════════════════════════════════════════
+#
+#  Chart Bitnami Redis — options minimales pour t2.micro
+#  Doc : https://github.com/bitnami/charts/tree/main/bitnami/redis
 
 auth:
-  enabled: false   # Pas d'auth en dev local (Spring Boot configure pas de password)
+  # Désactivé pour simplifier la config locale
+  # En prod : enabled: true + password: "secret"
+  enabled: false
+
+# ── Architecture standalone (pas de Sentinel/Cluster) ────────
+# Sentinel et Cluster nécessitent plusieurs nodes → pas possible sur t2.micro
+architecture: standalone
 
 master:
-  persistence:
-    enabled: true
-    size: 1Gi
-    storageClass: standard
-
   resources:
     requests:
-      memory: 64Mi
-      cpu: 50m
+      memory: "32Mi"
+      cpu: "10m"
     limits:
-      memory: 256Mi
-      cpu: 200m
+      memory: "64Mi"
+      cpu: "100m"
 
-  # Persistance Redis — save toutes les 60s si 1 write minimum
-  configuration: |
-    save 60 1
-    maxmemory 200mb
-    maxmemory-policy allkeys-lru
+  persistence:
+    enabled: true
+    size: "1Gi"
 
-# Pas de réplica en local
-replica:
-  replicaCount: 0
-
+# ── Désactiver les métriques (économiser du RAM) ─────────────
 metrics:
   enabled: false

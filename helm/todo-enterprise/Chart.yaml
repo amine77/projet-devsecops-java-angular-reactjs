@@ -1,0 +1,47 @@
+# ══════════════════════════════════════════════════════════════
+#  HELM CHART — todo-enterprise
+#  Chart principal de l'application Todo Enterprise
+# ══════════════════════════════════════════════════════════════
+#
+#  Ce chart déploie les 3 composants de l'application :
+#  → Backend Spring Boot (Java 21)
+#  → Frontend Angular 20 (Nginx)
+#  → Frontend React 19 (Nginx)
+#
+#  PRÉREQUIS (installés séparément via charts Bitnami) :
+#  → helm install postgres bitnami/postgresql -n data -f helm/values/postgres-values.yaml
+#  → helm install redis bitnami/redis -n data -f helm/values/redis-values.yaml
+#
+#  DÉPLOIEMENT :
+#  helm upgrade --install todo-enterprise ./helm/todo-enterprise \
+#    --namespace todo-app \
+#    --set backend.image.tag=<SHA_COMMIT> \
+#    --set frontendAngular.image.tag=<SHA_COMMIT> \
+#    --set frontendReact.image.tag=<SHA_COMMIT>
+
+apiVersion: v2
+name: todo-enterprise
+description: >
+  Application Todo Enterprise — Spring Boot + Angular 20 + React 19
+  déployée sur Minikube via Helm
+
+# Chart type : application (vs "library" pour les charts réutilisables)
+type: application
+
+# Version du chart (à incrémenter à chaque changement de structure)
+version: 1.0.0
+
+# Version de l'application déployée (mise à jour par le pipeline CI/CD)
+appVersion: "1.0.0"
+
+maintainers:
+  - name: amine77
+    url: https://github.com/amine77/projet-devsecops-java-angular-reactjs
+
+keywords:
+  - todo
+  - spring-boot
+  - angular
+  - react
+  - kubernetes
+  - helm
