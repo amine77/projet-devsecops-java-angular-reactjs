@@ -28,12 +28,14 @@ ARG OIDC_CLIENT_ID=todo-spa
 WORKDIR /app
 
 # Copier les fichiers de dépendances en premier (cache Docker)
-# Si package.json ne change pas → npm ci utilise le cache
+# Si package.json ne change pas, npm install utilise le cache de la couche
 COPY package.json package-lock.json* ./
 
 # Installation des dépendances
-# --frozen-lockfile : échoue si package-lock.json est obsolète
-RUN npm ci --frozen-lockfile
+# npm install : génère package-lock.json si absent, l'utilise s'il est présent
+# En production idéale : committer package-lock.json + utiliser npm ci
+# (npm ci est plus rapide et reproductible, mais nécessite package-lock.json)
+RUN npm install
 
 # Copier les sources Angular
 COPY . .

@@ -42,6 +42,14 @@ on:
     - cron: '0 8 * * MON'
   workflow_dispatch:   # Déclenchement manuel depuis l'interface GitHub
 
+# PERMISSIONS SARIF — obligatoires pour uploader vers l'onglet Security de GitHub
+# security-events: write → permet l'upload des rapports SARIF (Trivy, CodeQL)
+# Sans cette ligne : "Resource not accessible by integration" → échec de tous les scans
+permissions:
+  security-events: write  # Upload SARIF vers GitHub Security tab
+  contents: read          # Lecture du code source
+  actions: read           # Lecture des métadonnées du workflow (requis par CodeQL)
+
 jobs:
 
   # ── Job 1 : Scan Trivy du filesystem (secrets + config) ───────

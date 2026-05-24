@@ -58,9 +58,16 @@ concurrency:
   group: deploy-${{ github.ref }}
   cancel-in-progress: false    # Ne pas annuler un déploiement en cours !
 
+# PERMISSIONS OIDC — obligatoires pour s'authentifier à AWS sans clé statique
+# id-token: write  → GitHub génère un JWT signé que AWS STS peut valider
+# Sans cette ligne : "Unable to get OIDC token" → échec immédiat en 8s
+permissions:
+  id-token: write   # Requis pour aws-actions/configure-aws-credentials avec OIDC
+  contents: read    # Lecture du code source
+
 env:
-  AWS_REGION: ${{ secrets.AWS_REGION || 'eu-west-1' }}
-  ECR_REGISTRY: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION || 'eu-west-1' }}.amazonaws.com
+  AWS_REGION: ${{ secrets.AWS_REGION || 'eu-west-3' }}
+  ECR_REGISTRY: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION || 'eu-west-3' }}.amazonaws.com
   IMAGE_TAG: ${{ github.sha }}
 
 jobs:

@@ -58,12 +58,14 @@ jobs:
         with:
           node-version: '22'
           cache: 'npm'
-          cache-dependency-path: frontend-angular/package-lock.json
+          # package.json comme clé de cache (package-lock.json pas encore commité)
+          cache-dependency-path: frontend-angular/package.json
 
       - name: Installation des dependances
         working-directory: frontend-angular
-        # npm ci : installation reproductible depuis package-lock.json
-        run: npm ci --frozen-lockfile
+        # npm install : génère package-lock.json s'il est absent
+        # (npm ci nécessite un package-lock.json commité — on l'ajoutera plus tard)
+        run: npm install
 
       - name: Verification TypeScript (tsc)
         working-directory: frontend-angular
@@ -109,11 +111,13 @@ jobs:
         with:
           node-version: '22'
           cache: 'npm'
-          cache-dependency-path: frontend-react/package-lock.json
+          # package.json comme clé de cache (package-lock.json pas encore commité)
+          cache-dependency-path: frontend-react/package.json
 
       - name: Installation des dependances
         working-directory: frontend-react
-        run: npm ci --frozen-lockfile
+        # npm install : génère package-lock.json s'il est absent
+        run: npm install
 
       - name: Verification TypeScript (tsc)
         working-directory: frontend-react

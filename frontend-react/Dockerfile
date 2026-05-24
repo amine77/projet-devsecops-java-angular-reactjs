@@ -27,8 +27,8 @@ WORKDIR /app
 # Copier les manifests de dépendances
 COPY package.json package-lock.json* ./
 
-# Installation reproductible
-RUN npm ci --frozen-lockfile
+# Installation des dépendances
+RUN npm install
 
 # Copier les sources
 COPY . .
