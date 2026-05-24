@@ -181,8 +181,9 @@ jobs:
           cluster: todo-enterprise-cluster
           # Nom du service ECS (Fargate)
           service: todo-backend-service
-          # Task definition mise à jour avec la nouvelle image
-          task-definition: todo-backend-task
+          # Famille de la task definition (= champ "family" dans Terraform, sans "-task")
+          # IMPORTANT : c'est la valeur de family = "todo-backend", pas le tag Name
+          task-definition: todo-backend
           # Image à utiliser
           container-name: todo-backend
           container-image: ${{ env.ECR_REGISTRY }}/todo-backend:${{ env.IMAGE_TAG }}
@@ -208,7 +209,8 @@ jobs:
         with:
           cluster: todo-enterprise-cluster
           service: todo-frontend-angular-service
-          task-definition: todo-frontend-angular-task
+          # Famille Terraform : family = "todo-frontend-angular"
+          task-definition: todo-frontend-angular
           container-name: todo-frontend-angular
           container-image: ${{ env.ECR_REGISTRY }}/todo-frontend-angular:${{ env.IMAGE_TAG }}
           wait-for-service-stability: true
@@ -218,7 +220,8 @@ jobs:
         with:
           cluster: todo-enterprise-cluster
           service: todo-frontend-react-service
-          task-definition: todo-frontend-react-task
+          # Famille Terraform : family = "todo-frontend-react"
+          task-definition: todo-frontend-react
           container-name: todo-frontend-react
           container-image: ${{ env.ECR_REGISTRY }}/todo-frontend-react:${{ env.IMAGE_TAG }}
           wait-for-service-stability: true
