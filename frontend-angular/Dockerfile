@@ -32,10 +32,11 @@ WORKDIR /app
 COPY package.json package-lock.json* ./
 
 # Installation des dépendances
-# npm install : génère package-lock.json si absent, l'utilise s'il est présent
-# En production idéale : committer package-lock.json + utiliser npm ci
-# (npm ci est plus rapide et reproductible, mais nécessite package-lock.json)
-RUN npm install
+# --legacy-peer-deps : contourne les conflits de peer dependencies Angular 20 / npm 10+
+# npm 10 (Node 22) est strict sur les peer deps → angular/compiler-cli etc. ont des
+# déclarations de peers qui se chevauchent. --legacy-peer-deps = comportement npm 6.
+# Idem pour le Dockerfile React si nécessaire.
+RUN npm install --legacy-peer-deps
 
 # Copier les sources Angular
 COPY . .

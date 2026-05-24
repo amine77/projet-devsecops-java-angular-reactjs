@@ -63,9 +63,9 @@ jobs:
 
       - name: Installation des dependances
         working-directory: frontend-angular
-        # npm install : génère package-lock.json s'il est absent
-        # (npm ci nécessite un package-lock.json commité — on l'ajoutera plus tard)
-        run: npm install
+        # --legacy-peer-deps : Angular 20 + npm 10 (Node 22) ont des conflits de peer deps
+        # npm 10 est strict par défaut → legacy-peer-deps = comportement permissif npm 6
+        run: npm install --legacy-peer-deps
 
       - name: Verification TypeScript (tsc)
         working-directory: frontend-angular
@@ -116,8 +116,8 @@ jobs:
 
       - name: Installation des dependances
         working-directory: frontend-react
-        # npm install : génère package-lock.json s'il est absent
-        run: npm install
+        # --legacy-peer-deps : meme raison que Angular (npm 10 strict sur les peers)
+        run: npm install --legacy-peer-deps
 
       - name: Verification TypeScript (tsc)
         working-directory: frontend-react

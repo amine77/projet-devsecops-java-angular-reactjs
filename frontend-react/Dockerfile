@@ -28,7 +28,9 @@ WORKDIR /app
 COPY package.json package-lock.json* ./
 
 # Installation des dépendances
-RUN npm install
+# --legacy-peer-deps : contourne les conflits de peer dependencies avec npm 10+
+# (Node 22 embarque npm 10 qui est strict sur les peers par défaut)
+RUN npm install --legacy-peer-deps
 
 # Copier les sources
 COPY . .
