@@ -30,11 +30,14 @@ import java.util.Optional;
  */
 public interface CachePort {
 
-    /** Met une tâche en cache. */
-    void put(Task task);
+    /**
+     * Met une tâche en cache par son ID.
+     * La clé Redis sera "task:{taskId}".
+     */
+    void putById(TaskId taskId, Task task);
 
     /** Récupère une tâche depuis le cache (Optional.empty() si absent ou expiré). */
-    Optional<Task> getById(TaskId id);
+    Optional<Task> getById(TaskId taskId);
 
     /** Met en cache la liste des tâches d'un Gestionnaire. */
     void putByOwner(UserId ownerId, List<Task> tasks);
