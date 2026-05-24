@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+    <!--
+      ══════════════════════════════════════════════════════════════
+       PAGE HTML — index.html (React / Vite)
+      ══════════════════════════════════════════════════════════════
+
+      Point d'entrée HTML de l'application.
+
+      DIFFÉRENCE AVEC ANGULAR :
+      → Angular : index.html avec <app-root> (selector du AppComponent)
+      → React   : index.html avec <div id="root"> (point de montage ReactDOM)
+
+      VITE :
+      → Vite injecte automatiquement les scripts ES modules en développement
+      → En production : Vite remplace /src/main.tsx par le bundle optimisé
+      → L'attribut type="module" permet d'utiliser les imports ES modules natifs
+
+      SEO / META :
+      → Content-Security-Policy : important pour la sécurité des SPAs
+      → En production, configurer CSP pour ne permettre que les domaines connus
+    -->
+
+    <title>Todo Enterprise</title>
+    <meta name="description" content="Application de gestion de tâches Todo Enterprise" />
+
+    <!--
+      Content-Security-Policy minimaliste pour le développement.
+      En production : renforcer avec des directives strictes.
+    -->
+    <!-- <meta http-equiv="Content-Security-Policy" content="default-src 'self'; ..."> -->
+
+    <!-- Favicon simple -->
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>✅</text></svg>" />
+  </head>
+  <body>
+    <!--
+      Point de montage React.
+      ReactDOM.createRoot(document.getElementById('root')) dans main.tsx
+      monte l'arbre de composants ici.
+    -->
+    <div id="root"></div>
+
+    <!--
+      Script principal — Vite le remplace par le bundle en production.
+      type="module" = ESM natif, supporté par tous les navigateurs modernes.
+    -->
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
