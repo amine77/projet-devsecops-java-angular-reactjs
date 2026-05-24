@@ -224,12 +224,8 @@ class TaskDomainServiceTest {
         @DisplayName("✅ Manager valide une tâche A_FAIRE → VALIDEE, event + notification")
         void manager_validates_task_successfully() {
             // GIVEN
+            // Task.create passe ownerId directement → pas besoin de réassigner
             Task task = Task.create("Rapport", null, Priority.NORMALE, null, ownerId, teamId);
-            // Remettre l'ID du propriétaire fixe pour que findById(ownerId) fonctionne
-            task = new Task(task.id(), task.title(), task.description(), task.status(),
-                    task.priority(), task.dueDate(), ownerId, teamId,
-                    null, null, null, null, null, null, null,
-                    task.createdAt(), task.updatedAt(), task.version());
 
             given(cachePort.getById(task.id())).willReturn(Optional.empty());
             given(taskRepository.findById(task.id())).willReturn(Optional.of(task));
@@ -327,11 +323,8 @@ class TaskDomainServiceTest {
         @Test
         @DisplayName("✅ Manager rejette avec motif → REJETEE, event + notification")
         void manager_rejects_task_with_reason() {
+            // Task.create passe ownerId directement → pas besoin de réassigner
             Task task = Task.create("Rapport", null, Priority.NORMALE, null, ownerId, teamId);
-            task = new Task(task.id(), task.title(), task.description(), task.status(),
-                    task.priority(), task.dueDate(), ownerId, teamId,
-                    null, null, null, null, null, null, null,
-                    task.createdAt(), task.updatedAt(), task.version());
 
             given(cachePort.getById(task.id())).willReturn(Optional.empty());
             given(taskRepository.findById(task.id())).willReturn(Optional.of(task));
@@ -390,16 +383,9 @@ class TaskDomainServiceTest {
         @DisplayName("✅ Modification d'une tâche REJETEE → repasse en A_FAIRE (RG-07)")
         void updating_rejected_task_resets_to_a_faire() {
             // GIVEN : une tâche REJETEE
+            // Task.create passe ownerId directement → reject() le préserve → pas de réassignation
             Task rejectedTask = Task.create("Rapport", null, Priority.NORMALE, null, ownerId, teamId)
                     .reject("Incomplet", managerId);
-            rejectedTask = new Task(
-                    rejectedTask.id(), rejectedTask.title(), rejectedTask.description(),
-                    rejectedTask.status(), rejectedTask.priority(), rejectedTask.dueDate(),
-                    ownerId, rejectedTask.teamId(), rejectedTask.rejectionReason(),
-                    rejectedTask.rejectedBy(), rejectedTask.rejectedAt(),
-                    null, null, null, null,
-                    rejectedTask.createdAt(), rejectedTask.updatedAt(), rejectedTask.version()
-            );
 
             given(cachePort.getById(rejectedTask.id())).willReturn(Optional.empty());
             given(taskRepository.findById(rejectedTask.id())).willReturn(Optional.of(rejectedTask));
@@ -466,11 +452,8 @@ class TaskDomainServiceTest {
         @Test
         @DisplayName("✅ Suppression d'une tâche A_FAIRE → OK")
         void can_delete_a_faire_task() {
+            // Task.create passe ownerId directement → variable effectively final
             Task task = Task.create("À supprimer", null, Priority.BASSE, null, ownerId, teamId);
-            task = new Task(task.id(), task.title(), task.description(), task.status(),
-                    task.priority(), task.dueDate(), ownerId, teamId,
-                    null, null, null, null, null, null, null,
-                    task.createdAt(), task.updatedAt(), task.version());
 
             given(cachePort.getById(task.id())).willReturn(Optional.empty());
             given(taskRepository.findById(task.id())).willReturn(Optional.of(task));
@@ -484,21 +467,17 @@ class TaskDomainServiceTest {
         @Test
         @DisplayName("❌ Suppression d'une tâche REJETEE → UnauthorizedActionException (RG-05)")
         void cannot_delete_rejected_task() {
+            // IMPORTANT : variable effectively final (pas de réassignation)
+            // → obligatoire pour l'utiliser dans la lambda assertThatThrownBy
+            // Task.create(..., ownerId, ...).reject(...) préserve ownerId → pas besoin de new Task()
             Task rejectedTask = Task.create("Tâche", null, Priority.NORMALE, null, ownerId, teamId)
                     .reject("Motif", managerId);
-            rejectedTask = new Task(
-                    rejectedTask.id(), rejectedTask.title(), rejectedTask.description(),
-                    rejectedTask.status(), rejectedTask.priority(), rejectedTask.dueDate(),
-                    ownerId, rejectedTask.teamId(), rejectedTask.rejectionReason(),
-                    rejectedTask.rejectedBy(), rejectedTask.rejectedAt(),
-                    null, null, null, null,
-                    rejectedTask.createdAt(), rejectedTask.updatedAt(), rejectedTask.version()
-            );
 
             given(cachePort.getById(rejectedTask.id())).willReturn(Optional.empty());
             given(taskRepository.findById(rejectedTask.id())).willReturn(Optional.of(rejectedTask));
             given(userRepository.findById(ownerId)).willReturn(Optional.of(gestionnaire));
 
+            // rejectedTask est effectively final → utilisable dans la lambda
             assertThatThrownBy(() -> service.deleteTask(rejectedTask.id(), ownerId))
                     .isInstanceOf(UnauthorizedActionException.class);
 
