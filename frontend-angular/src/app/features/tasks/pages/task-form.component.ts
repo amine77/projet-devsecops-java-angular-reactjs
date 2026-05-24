@@ -6,7 +6,7 @@ import {
   ReactiveFormsModule, FormBuilder, FormGroup, Validators, AbstractControl
 } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
-import { switchMap, of } from 'rxjs';
+import { Observable, switchMap, of } from 'rxjs';
 import { TaskService } from '@core/services/task.service';
 import { Task, Priority, CreateTaskRequest } from '@core/models/task.model';
 
@@ -239,7 +239,11 @@ export class TaskFormComponent implements OnInit {
       dueDate:     this.taskForm.value.dueDate || undefined,
     };
 
-    const action$ = this.isEditMode() && this.taskId
+    // Typage explicite Observable<string | void> : TypeScript ne peut pas
+    // résoudre automatiquement le type du ternaire car createTask retourne
+    // Observable<string> (l'id extrait du Location header) et updateTask
+    // retourne Observable<void>. L'union string | void permet les deux.
+    const action$: Observable<string | void> = this.isEditMode() && this.taskId
       ? this.taskService.updateTask(this.taskId, request)
       : this.taskService.createTask(request);
 
@@ -247,8 +251,10 @@ export class TaskFormComponent implements OnInit {
       next: () => {
         this.router.navigate(['/tasks']);
       },
-      error: err => {
-        this.error.set(err.message ?? 'Erreur lors de l\'enregistrement');
+      // err: unknown (strict mode) — on accède à .message via cast sécurisé
+      error: (err: unknown) => {
+        const msg = err instanceof Error ? err.message : 'Erreur lors de l\'enregistrement';
+        this.error.set(msg);
         this.submitting.set(false);
       },
     });
