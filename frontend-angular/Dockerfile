@@ -42,8 +42,9 @@ RUN npm install --legacy-peer-deps
 COPY . .
 
 # Build de production
-# --configuration production : minification, tree-shaking, AOT compiler
-# --output-path : dossier de sortie (personnalisable)
+# --configuration production : minification, tree-shaking, AOT compiler (esbuild via @angular-devkit/build-angular:application)
+# Note : avec le builder "application" (Angular 17+), les assets statiques
+# sont générés dans <output-path>/browser/ (pas directement dans output-path)
 RUN npx ng build --configuration production --output-path /dist/angular
 
 # ── Étape 2 : Nginx pour servir les assets ─────────────────────
@@ -59,7 +60,9 @@ RUN rm -rf /etc/nginx/conf.d/*
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 
 # Copier les assets Angular buildés
-COPY --from=build /dist/angular /usr/share/nginx/html
+# Le builder "application" (Angular 17+) génère les fichiers dans dist/angular/browser/
+# (séparation browser/server pour le SSR potentiel)
+COPY --from=build /dist/angular/browser /usr/share/nginx/html
 
 # Port 80 exposé
 EXPOSE 80
