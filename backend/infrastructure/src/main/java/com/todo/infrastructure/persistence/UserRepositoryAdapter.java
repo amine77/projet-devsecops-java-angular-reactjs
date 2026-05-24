@@ -1,11 +1,14 @@
 package com.todo.infrastructure.persistence;
 
+import com.todo.domain.model.TeamId;
 import com.todo.domain.model.User;
 import com.todo.domain.model.UserId;
+import com.todo.domain.model.UserRole;
 import com.todo.domain.port.out.UserRepository;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.List;
 import java.util.Optional;
 
 /**
@@ -52,8 +55,44 @@ public class UserRepositoryAdapter implements UserRepository {
     }
 
     @Override
+    @Transactional(readOnly = true)
+    public Optional<User> findByUsername(String username) {
+        return jpaRepository.findByUsername(username)
+                .map(UserJpaEntity::toDomain);
+    }
+
+    @Override
     @Transactional
     public void save(User user) {
         jpaRepository.save(UserJpaEntity.fromDomain(user));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<User> findByTeam(TeamId teamId) {
+        // Spring Data JPA : findByTeamId(UUID) → WHERE team_id = ?
+        return jpaRepository.findByTeamId(teamId.value())
+                .stream()
+                .map(UserJpaEntity::toDomain)
+                .toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<User> findByRole(UserRole role) {
+        return jpaRepository.findByRole(role)
+                .stream()
+                .map(UserJpaEntity::toDomain)
+                .toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<User> findAll() {
+        // findAll() hérité de JpaRepository → SELECT * FROM users
+        return jpaRepository.findAll()
+                .stream()
+                .map(UserJpaEntity::toDomain)
+                .toList();
     }
 }

@@ -8,7 +8,6 @@ import org.slf4j.LoggerFactory;
 import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
 
-import java.util.List;
 
 /**
  * ══════════════════════════════════════════════════════════════
@@ -77,8 +76,9 @@ public class NoOpNotificationAdapter implements NotificationPort {
     }
 
     @Override
-    public void notifyOverdueTasksReminder(List<Task> overdueTasks, User manager) {
-        log.info("[NO-OP EMAIL] Rappel tâches en retard → destinataire: {} | {} tâches",
-                manager.email(), overdueTasks.size());
+    public void notifyOverdueTasksReminder(User manager, int overdueCount) {
+        // Signature alignée avec NotificationPort : (User manager, int overdueCount)
+        log.info("[NO-OP EMAIL] Rappel tâches en retard → destinataire: {} | {} tâches en retard",
+                manager.email(), overdueCount);
     }
 }

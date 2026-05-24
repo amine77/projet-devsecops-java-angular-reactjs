@@ -171,21 +171,25 @@ public class SesNotificationAdapter implements NotificationPort {
     }
 
     @Override
-    public void notifyOverdueTasksReminder(java.util.List<Task> overdueTasks, User manager) {
-        if (overdueTasks.isEmpty()) return;
+    public void notifyOverdueTasksReminder(User manager, int overdueCount) {
+        // Signature alignée avec NotificationPort : (User manager, int overdueCount)
+        if (overdueCount == 0) return;
 
-        String subject = String.format("⚠️ %d tâche(s) en retard dans votre équipe", overdueTasks.size());
-        StringBuilder body = new StringBuilder(String.format(
-            "Bonjour %s,\n\nLes tâches suivantes sont en retard :\n\n",
-            manager.firstName()
-        ));
-        overdueTasks.forEach(task ->
-            body.append(String.format("• %s (Priorité : %s, Échéance : %s)\n",
-                task.title(), task.priority(), task.dueDate()))
+        String subject = String.format("⚠️ %d tâche(s) en retard dans votre équipe", overdueCount);
+        String body = String.format("""
+            Bonjour %s,
+
+            %d tâche(s) sont actuellement en retard dans votre équipe.
+
+            Connectez-vous pour valider, rejeter ou clôturer ces tâches.
+
+            Cordialement,
+            L'équipe Todo Enterprise
+            """,
+            manager.firstName(),
+            overdueCount
         );
-        body.append("\nConnectez-vous pour prendre les décisions nécessaires.\n\nCordialement,\nL'équipe Todo Enterprise");
-
-        sendEmail(manager.email(), subject, body.toString());
+        sendEmail(manager.email(), subject, body);
     }
 
     // ══════════════════════════════════════════════════════════

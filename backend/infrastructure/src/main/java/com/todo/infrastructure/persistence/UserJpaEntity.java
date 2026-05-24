@@ -12,6 +12,7 @@ import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 
+import java.time.Instant;
 import java.util.UUID;
 
 /**
@@ -25,14 +26,10 @@ import java.util.UUID;
  *  → L'utilisateur est créé dans Keycloak/Cognito (source de vérité IAM)
  *  → A la première connexion, un enregistrement est créé ici avec le keycloakId
  *  → Le keycloakId = sub du JWT (claim standard OpenID Connect)
- *  → Exemple : "7f432e8b-1234-5678-abcd-ef0123456789"
  *
- *  POURQUOI DUPLIQUER LES UTILISATEURS ?
- *  → On a besoin des User pour les vérifications métier (rôle, équipe)
- *  → On ne veut pas appeler Keycloak à chaque requête (latence + dépendance)
- *  → Solution : stocker la "projection" métier de l'utilisateur en local
- *  → La synchronisation se fait via un webhook Keycloak (Phase 4) ou
- *    à la première connexion (JwtToUserConverter)
+ *  CHAMPS OPTIONNELS (nullable) :
+ *  → teamId et unitId sont null pour le SUPER_ADMINISTRATEUR (accès global)
+ *  → active = false pour les comptes désactivés (soft-delete)
  * ══════════════════════════════════════════════════════════════
  */
 @Entity
@@ -51,6 +48,10 @@ public class UserJpaEntity {
     @Column(name = "keycloak_id", nullable = false, unique = true, length = 100)
     private String keycloakId;
 
+    /** Nom de connexion unique — login de l'utilisateur. */
+    @Column(nullable = false, length = 100, unique = true)
+    private String username;
+
     @Column(name = "first_name", nullable = false, length = 100)
     private String firstName;
 
@@ -64,39 +65,76 @@ public class UserJpaEntity {
     @Column(nullable = false, length = 30)
     private UserRole role;
 
-    @Column(name = "team_id", nullable = false, columnDefinition = "uuid")
+    /**
+     * Nullable : le SUPER_ADMINISTRATEUR n'a pas d'équipe (accès global).
+     * Les GESTIONNAIRE et MANAGER ont toujours une équipe (RG-01/RG-02).
+     */
+    @Column(name = "team_id", columnDefinition = "uuid")
     private UUID teamId;
 
-    @Column(name = "unit_id", nullable = false, columnDefinition = "uuid")
+    /** Nullable : idem que teamId pour le SUPER_ADMINISTRATEUR. */
+    @Column(name = "unit_id", columnDefinition = "uuid")
     private UUID unitId;
+
+    /** false = compte désactivé sans suppression (conservation de l'historique). */
+    @Column(nullable = false)
+    private boolean active = true;
+
+    @Column(name = "created_at", nullable = false, updatable = false)
+    private Instant createdAt;
+
+    @Column(name = "updated_at", nullable = false)
+    private Instant updatedAt;
 
     protected UserJpaEntity() {}
 
-    /** Conversion JPA → domaine */
+    // ══════════════════════════════════════════════════════════
+    //  CONVERSIONS
+    // ══════════════════════════════════════════════════════════
+
+    /**
+     * Conversion JPA Entity → Domain Record.
+     *
+     * ORDRE DES ARGUMENTS (critique — correspond au record User) :
+     * UserId, keycloakId, username, email, firstName, lastName,
+     * UserRole, TeamId, UnitId, boolean active, Instant createdAt, Instant updatedAt
+     */
     public User toDomain() {
+        var now = Instant.now();
         return new User(
                 new UserId(id),
                 keycloakId,
+                username,
+                email,
                 firstName,
                 lastName,
-                email,
                 role,
-                new TeamId(teamId),
-                new UnitId(unitId)
+                // teamId null pour SUPER_ADMINISTRATEUR
+                teamId != null ? new TeamId(teamId) : null,
+                unitId != null ? new UnitId(unitId) : null,
+                active,
+                // Valeurs par défaut si la colonne n'était pas encore remplie (migration)
+                createdAt != null ? createdAt : now,
+                updatedAt != null ? updatedAt : now
         );
     }
 
-    /** Conversion domaine → JPA */
+    /** Conversion Domain Record → JPA Entity (pour save). */
     public static UserJpaEntity fromDomain(User user) {
         UserJpaEntity e = new UserJpaEntity();
         e.id         = user.id().value();
         e.keycloakId = user.keycloakId();
+        e.username   = user.username();
         e.firstName  = user.firstName();
         e.lastName   = user.lastName();
         e.email      = user.email();
         e.role       = user.role();
-        e.teamId     = user.teamId().value();
-        e.unitId     = user.unitId().value();
+        // null pour SUPER_ADMINISTRATEUR
+        e.teamId     = user.teamId()  != null ? user.teamId().value()  : null;
+        e.unitId     = user.unitId()  != null ? user.unitId().value()  : null;
+        e.active     = user.active();
+        e.createdAt  = user.createdAt();
+        e.updatedAt  = user.updatedAt();
         return e;
     }
 }
