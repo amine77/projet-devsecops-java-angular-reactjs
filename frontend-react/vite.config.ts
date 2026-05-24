@@ -27,7 +27,7 @@ export default defineConfig({
     alias: {
       '@': resolve(__dirname, 'src'),
       '@api': resolve(__dirname, 'src/api'),
-      '@types': resolve(__dirname, 'src/types'),
+      '@app-types': resolve(__dirname, 'src/types'),
       '@hooks': resolve(__dirname, 'src/hooks'),
       '@components': resolve(__dirname, 'src/components'),
       '@context': resolve(__dirname, 'src/context'),

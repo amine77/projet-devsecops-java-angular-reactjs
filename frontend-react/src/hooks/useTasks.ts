@@ -20,7 +20,7 @@ import {
 } from '@api/task.api';
 import type {
   Task, TaskStatus, CreateTaskRequest, UpdateTaskRequest, RejectTaskRequest,
-} from '@types/task.types';
+} from '@app-types/task.types';
 
 /**
  * ══════════════════════════════════════════════════════════════

@@ -5,7 +5,7 @@ import { useAuthContext } from '@context/AuthContext';
 import {
   STATUS_LABELS, STATUS_BADGE_CLASS, PRIORITY_LABELS, PRIORITY_BADGE_CLASS,
   type TaskStatus,
-} from '@types/task.types';
+} from '@app-types/task.types';
 
 /**
  * ══════════════════════════════════════════════════════════════

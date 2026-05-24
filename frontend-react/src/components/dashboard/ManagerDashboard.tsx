@@ -1,8 +1,8 @@
 import { useState, useMemo } from 'react';
 import { useTeamTasks, useValidateTask, useRejectTask } from '@hooks/useTasks';
 import { useAuthContext } from '@context/AuthContext';
-import { STATUS_LABELS, PRIORITY_BADGE_CLASS, PRIORITY_LABELS } from '@types/task.types';
-import type { Task } from '@types/task.types';
+import { STATUS_LABELS, PRIORITY_BADGE_CLASS, PRIORITY_LABELS } from '@app-types/task.types';
+import type { Task } from '@app-types/task.types';
 
 /**
  * ══════════════════════════════════════════════════════════════

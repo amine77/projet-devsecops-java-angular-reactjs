@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useTask, useCreateTask, useUpdateTask } from '@hooks/useTasks';
-import type { Priority, CreateTaskRequest } from '@types/task.types';
+import type { Priority, CreateTaskRequest } from '@app-types/task.types';
 
 /**
  * ══════════════════════════════════════════════════════════════

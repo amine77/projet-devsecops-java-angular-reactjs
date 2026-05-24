@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useEffect, useMemo } from 'react';
 import { useAuth } from 'react-oidc-context';
 import { apiClient } from '@api/task.api';
-import type { UserRole } from '@types/task.types';
+import type { UserRole } from '@app-types/task.types';
 
 /**
  * ══════════════════════════════════════════════════════════════

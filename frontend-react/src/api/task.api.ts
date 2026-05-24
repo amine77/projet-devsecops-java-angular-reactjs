@@ -1,7 +1,7 @@
 import axios from 'axios';
 import type {
   Task, CreateTaskRequest, UpdateTaskRequest, RejectTaskRequest, TaskStatus
-} from '@types/task.types';
+} from '@app-types/task.types';
 
 /**
  * ══════════════════════════════════════════════════════════════
