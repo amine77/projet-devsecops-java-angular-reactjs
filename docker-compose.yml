@@ -1,0 +1,183 @@
+# ============================================================
+#  Todo Enterprise — Data Layer local (dev sans Minikube)
+#  Usage : docker compose up -d
+#  Stack : PostgreSQL · MongoDB · Redis · Kafka · Keycloak
+# ============================================================
+
+services:
+
+  # ─── PostgreSQL 16 ─────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: todo-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: tododb
+      POSTGRES_USER: todouser
+      POSTGRES_PASSWORD: todopass
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/sql/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U todouser -d tododb"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - todo-net
+
+  # ─── MongoDB 7 ─────────────────────────────────────────────
+  mongo:
+    image: mongo:7-jammy
+    container_name: todo-mongo
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: mongouser
+      MONGO_INITDB_ROOT_PASSWORD: mongopass
+      MONGO_INITDB_DATABASE: tododb
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - todo-net
+
+  # ─── Redis 7 ───────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: todo-redis
+    restart: unless-stopped
+    command: redis-server --save 60 1 --loglevel warning
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - todo-net
+
+  # ─── Kafka (Redpanda — compatible Kafka, UI incluse) ───────
+  #  Redpanda est un broker Kafka 100% compatible sans JVM.
+  #  En local c'est beaucoup plus léger que Confluent.
+  redpanda:
+    image: redpandadata/redpanda:v24.1.1
+    container_name: todo-kafka
+    restart: unless-stopped
+    command:
+      - redpanda
+      - start
+      - --kafka-addr internal://0.0.0.0:9092,external://0.0.0.0:19092
+      - --advertise-kafka-addr internal://redpanda:9092,external://localhost:19092
+      - --pandaproxy-addr internal://0.0.0.0:8082,external://0.0.0.0:18082
+      - --advertise-pandaproxy-addr internal://redpanda:8082,external://localhost:18082
+      - --schema-registry-addr internal://0.0.0.0:8081,external://0.0.0.0:18081
+      - --rpc-addr redpanda:33145
+      - --advertise-rpc-addr redpanda:33145
+      - --mode dev-container
+      - --smp 1
+      - --default-log-level=warn
+    ports:
+      - "19092:19092"   # Kafka externe (localhost)
+      - "18082:18082"   # PandaProxy externe
+      - "18081:18081"   # Schema Registry externe
+      - "9644:9644"     # Admin API
+    volumes:
+      - redpanda_data:/var/lib/redpanda/data
+    healthcheck:
+      test: ["CMD-SHELL", "rpk cluster health | grep -q 'Healthy:.*true'"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+    networks:
+      - todo-net
+
+  # ─── Redpanda Console (UI Kafka) ───────────────────────────
+  redpanda-console:
+    image: redpandadata/console:v2.5.2
+    container_name: todo-kafka-ui
+    restart: unless-stopped
+    environment:
+      CONFIG_FILEPATH: /tmp/config.yml
+      CONSOLE_CONFIG_FILE: |
+        kafka:
+          brokers: ["redpanda:9092"]
+          schemaRegistry:
+            enabled: true
+            urls: ["http://redpanda:8081"]
+        redpanda:
+          adminApi:
+            enabled: true
+            urls: ["http://redpanda:9644"]
+    ports:
+      - "8090:8080"   # http://localhost:8090 → UI Kafka
+    depends_on:
+      redpanda:
+        condition: service_healthy
+    networks:
+      - todo-net
+
+  # ─── Keycloak 24 ───────────────────────────────────────────
+  keycloak:
+    image: quay.io/keycloak/keycloak:24.0
+    container_name: todo-keycloak
+    restart: unless-stopped
+    environment:
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak
+      KC_DB_USERNAME: todouser
+      KC_DB_PASSWORD: todopass
+      KC_HOSTNAME: localhost
+      KC_HOSTNAME_PORT: "8180"
+      KC_HOSTNAME_STRICT: "false"
+      KC_HTTP_ENABLED: "true"
+    command: start-dev --import-realm
+    ports:
+      - "8180:8080"   # http://localhost:8180 → Keycloak
+    volumes:
+      - ./keycloak:/opt/keycloak/data/import:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - todo-net
+
+  # ─── Mongo Express (UI MongoDB) ────────────────────────────
+  mongo-express:
+    image: mongo-express:1.0.2-20
+    container_name: todo-mongo-ui
+    restart: unless-stopped
+    environment:
+      ME_CONFIG_MONGODB_ADMINUSERNAME: mongouser
+      ME_CONFIG_MONGODB_ADMINPASSWORD: mongopass
+      ME_CONFIG_MONGODB_URL: mongodb://mongouser:mongopass@mongo:27017/
+      ME_CONFIG_BASICAUTH: "false"
+    ports:
+      - "8091:8081"   # http://localhost:8091 → UI MongoDB
+    depends_on:
+      mongo:
+        condition: service_healthy
+    networks:
+      - todo-net
+
+volumes:
+  postgres_data:
+  mongo_data:
+  redis_data:
+  redpanda_data:
+
+networks:
+  todo-net:
+    driver: bridge

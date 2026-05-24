@@ -1,0 +1,111 @@
+# ============================================================
+#  kube-prometheus-stack — Minikube (namespace: monitoring)
+#  helm install monitoring prometheus-community/kube-prometheus-stack
+#    -n monitoring -f helm/values/monitoring-values.yaml
+#
+#  Inclut : Prometheus + Grafana + Alertmanager + Node Exporter
+# ============================================================
+
+# ─── Grafana ──────────────────────────────────────────────────
+grafana:
+  enabled: true
+  adminUser: admin
+  adminPassword: admin
+
+  persistence:
+    enabled: true
+    size: 1Gi
+    storageClass: standard
+
+  resources:
+    requests:
+      memory: 128Mi
+      cpu: 100m
+    limits:
+      memory: 256Mi
+      cpu: 500m
+
+  ingress:
+    enabled: true
+    ingressClassName: nginx
+    hosts:
+      - grafana.todo.local
+    paths:
+      - /
+
+  # Dashboards préconfigurés
+  dashboardProviders:
+    dashboardproviders.yaml:
+      apiVersion: 1
+      providers:
+        - name: 'default'
+          orgId: 1
+          folder: 'Todo Enterprise'
+          type: file
+          disableDeletion: false
+          editable: true
+          options:
+            path: /var/lib/grafana/dashboards/default
+
+  # Datasources préconfigurées
+  additionalDataSources:
+    - name: Loki
+      type: loki
+      url: http://loki.monitoring.svc.cluster.local:3100
+      access: proxy
+      isDefault: false
+
+# ─── Prometheus ───────────────────────────────────────────────
+prometheus:
+  enabled: true
+
+  prometheusSpec:
+    retention: 7d
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: standard
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 5Gi
+
+    resources:
+      requests:
+        memory: 512Mi
+        cpu: 250m
+      limits:
+        memory: 1Gi
+        cpu: 1000m
+
+    # Scrape toutes les ServiceMonitor dans tous les namespaces
+    serviceMonitorSelectorNilUsesHelmValues: false
+    podMonitorSelectorNilUsesHelmValues: false
+
+# ─── Alertmanager ─────────────────────────────────────────────
+alertmanager:
+  enabled: true
+  alertmanagerSpec:
+    storage:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: standard
+          resources:
+            requests:
+              storage: 1Gi
+
+# ─── Node Exporter ────────────────────────────────────────────
+nodeExporter:
+  enabled: true
+
+# ─── kube-state-metrics ───────────────────────────────────────
+kubeStateMetrics:
+  enabled: true
+
+# Réduit la charge en local
+defaultRules:
+  rules:
+    alertmanager: false      # Désactivé en Phase 1
+    etcd: false
+    kubeApiserver: false
+    kubeScheduler: false

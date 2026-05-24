@@ -1,0 +1,71 @@
+# ============================================================
+#  todo-api — Helm Values par défaut (profil local)
+#  Override via : helm upgrade ... --set image.tag=v2
+# ============================================================
+
+replicaCount: 1
+
+image:
+  repository: todo-api
+  tag: latest
+  pullPolicy: IfNotPresent   # Image locale Minikube (pas de registry en Phase 1-5)
+
+service:
+  type: ClusterIP
+  port: 8080
+
+ingress:
+  enabled: true
+  className: nginx
+  host: todo.local
+  path: /api
+
+# Variables d'environnement Spring Boot
+env:
+  SPRING_PROFILES_ACTIVE: local
+  SPRING_DATASOURCE_URL: jdbc:postgresql://postgres-postgresql.data.svc.cluster.local:5432/tododb
+  SPRING_DATASOURCE_USERNAME: todouser
+  SPRING_DATA_MONGODB_URI: mongodb://mongouser:mongopass@mongo-mongodb.data.svc.cluster.local:27017/tododb
+  SPRING_DATA_REDIS_HOST: redis-master.data.svc.cluster.local
+  SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka.data.svc.cluster.local:9092
+  SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI: http://keycloak.todo-app.svc.cluster.local:8080/realms/todo
+
+# Secret séparé pour les credentials (créé via kubectl)
+envFrom:
+  - secretRef:
+      name: todo-api-secrets   # kubectl create secret generic todo-api-secrets ...
+
+resources:
+  requests:
+    memory: 512Mi
+    cpu: 250m
+  limits:
+    memory: 1Gi
+    cpu: 1000m
+
+# Health checks Spring Boot Actuator
+livenessProbe:
+  httpGet:
+    path: /actuator/health/liveness
+    port: 8080
+  initialDelaySeconds: 60
+  periodSeconds: 15
+  failureThreshold: 3
+
+readinessProbe:
+  httpGet:
+    path: /actuator/health/readiness
+    port: 8080
+  initialDelaySeconds: 30
+  periodSeconds: 10
+  failureThreshold: 3
+
+# Virtual Threads Java 21 — pas de limite de threads nécessaire
+# Le JVM gère des milliers de VT sur peu de threads OS
+
+autoscaling:
+  enabled: false
+
+nodeSelector: {}
+tolerations: []
+affinity: {}

@@ -1,0 +1,37 @@
+# ============================================================
+#  Redis 7 — Bitnami Chart — Minikube (namespace: data)
+#  helm install redis bitnami/redis -n data -f helm/values/redis-values.yaml
+# ============================================================
+
+# Mode standalone (pas de Sentinel en local — Sentinel = 3 pods)
+architecture: standalone
+
+auth:
+  enabled: false   # Pas d'auth en dev local (Spring Boot configure pas de password)
+
+master:
+  persistence:
+    enabled: true
+    size: 1Gi
+    storageClass: standard
+
+  resources:
+    requests:
+      memory: 64Mi
+      cpu: 50m
+    limits:
+      memory: 256Mi
+      cpu: 200m
+
+  # Persistance Redis — save toutes les 60s si 1 write minimum
+  configuration: |
+    save 60 1
+    maxmemory 200mb
+    maxmemory-policy allkeys-lru
+
+# Pas de réplica en local
+replica:
+  replicaCount: 0
+
+metrics:
+  enabled: false

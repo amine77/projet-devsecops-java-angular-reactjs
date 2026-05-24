@@ -1,0 +1,47 @@
+# ============================================================
+#  PostgreSQL 16 — Bitnami Chart — Minikube (namespace: data)
+#  helm install postgres bitnami/postgresql -n data -f helm/values/postgres-values.yaml
+# ============================================================
+
+auth:
+  username: todouser
+  password: todopass
+  database: tododb
+  # Le user postgres superadmin (pour migrations urgentes)
+  postgresPassword: superadminpass
+
+primary:
+  persistence:
+    enabled: true
+    size: 2Gi
+    storageClass: standard   # StorageClass Minikube
+
+  resources:
+    requests:
+      memory: 256Mi
+      cpu: 100m
+    limits:
+      memory: 512Mi
+      cpu: 500m
+
+  # Paramètres PostgreSQL optimisés pour un dev local
+  extendedConfiguration: |
+    max_connections = 50
+    shared_buffers = 64MB
+    work_mem = 4MB
+    log_min_duration_statement = 1000
+
+  # Initialiser la base keycloak au démarrage
+  initdb:
+    scripts:
+      init-keycloak-db.sql: |
+        CREATE DATABASE keycloak;
+        GRANT ALL PRIVILEGES ON DATABASE keycloak TO todouser;
+
+# Pas de réplication en local
+readReplicas:
+  replicaCount: 0
+
+# Metrics Prometheus (désactivé en Phase 1, activé Phase 6)
+metrics:
+  enabled: false

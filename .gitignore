@@ -1,0 +1,90 @@
+# ============================================================
+#  .gitignore — Todo Enterprise
+# ============================================================
+
+# ─── Java / Maven ────────────────────────────────────────────
+target/
+*.class
+*.jar
+*.war
+*.ear
+*.nar
+.mvn/timing.properties
+.mvn/wrapper/maven-wrapper.jar
+
+# ─── Spring Boot ─────────────────────────────────────────────
+*.log
+logs/
+uploads/
+
+# ─── Node.js / Frontend ──────────────────────────────────────
+node_modules/
+dist/
+.angular/
+.next/
+.nuxt/
+*.tsbuildinfo
+
+# ─── Terraform ───────────────────────────────────────────────
+.terraform/
+.terraform.lock.hcl
+terraform.tfstate
+terraform.tfstate.backup
+*.tfvars
+!*.tfvars.example
+terraform.tfplan
+override.tf
+override.tf.json
+
+# ─── Docker ──────────────────────────────────────────────────
+.dockerignore
+
+# ─── IDE ─────────────────────────────────────────────────────
+.idea/
+*.iml
+*.iws
+.vscode/settings.json
+.classpath
+.project
+.settings/
+
+# ─── OS ──────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ─── AWS / Credentials ───────────────────────────────────────
+.aws/
+*.pem
+*.key
+credentials
+
+# ─── Secrets (jamais dans Git) ───────────────────────────────
+*.secret
+.env
+.env.local
+.env.production
+secrets.yml
+secrets.yaml
+
+# ─── Tests ───────────────────────────────────────────────────
+/performance-tests/target/
+
+# ─── JaCoCo / SonarCloud ─────────────────────────────────────
+jacoco.exec
+*.exec
+
+# ─── Claude Code (mémoire locale — ne jamais versionner) ────
+.claude/
+
+# ─── Kubernetes ──────────────────────────────────────────────
+kubeconfig
+*.kubeconfig
+
+# ─── Rapports OWASP / Trivy ──────────────────────────────────
+reports/
+*.sarif
+
+# ─── Helm — charts téléchargés ───────────────────────────────
+charts/
+Chart.lock

@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+                             https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.todo</groupId>
+        <artifactId>todo-enterprise</artifactId>
+        <version>0.1.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>todo-application</artifactId>
+    <name>Todo Application — Use Cases</name>
+    <description>
+        Couche Application — Orchestration des use cases.
+        Dépend du domaine. N'a pas de dépendance vers Spring ou les adapters.
+        Contient : CommandHandlers (CreateTaskHandler, ValidateTaskHandler, etc.)
+    </description>
+
+    <dependencies>
+
+        <!-- Dépend uniquement du domaine -->
+        <dependency>
+            <groupId>com.todo</groupId>
+            <artifactId>todo-domain</artifactId>
+        </dependency>
+
+        <!-- Jakarta Validation (annotations @NotNull, etc.) — sans Spring -->
+        <dependency>
+            <groupId>jakarta.validation</groupId>
+            <artifactId>jakarta.validation-api</artifactId>
+        </dependency>
+
+    </dependencies>
+
+</project>

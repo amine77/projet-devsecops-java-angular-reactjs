@@ -1,0 +1,57 @@
+# ============================================================
+#  Keycloak 24 — Bitnami Chart — Minikube (namespace: todo-app)
+#  helm install keycloak bitnami/keycloak -n todo-app -f helm/values/keycloak-values.yaml
+# ============================================================
+
+auth:
+  adminUser: admin
+  adminPassword: admin
+
+# Keycloak utilise PostgreSQL (dans le namespace data)
+postgresql:
+  enabled: false   # On utilise notre propre PostgreSQL
+
+externalDatabase:
+  host: postgres-postgresql.data.svc.cluster.local
+  port: 5432
+  database: keycloak
+  user: todouser
+  password: todopass
+
+# Import automatique du realm todo
+extraEnvVars:
+  - name: KC_IMPORT_REALM
+    value: "/opt/keycloak/data/import/todo-realm.json"
+
+extraVolumes:
+  - name: realm-config
+    configMap:
+      name: keycloak-realm
+
+extraVolumeMounts:
+  - name: realm-config
+    mountPath: /opt/keycloak/data/import
+    readOnly: true
+
+replicaCount: 1
+
+resources:
+  requests:
+    memory: 512Mi
+    cpu: 250m
+  limits:
+    memory: 1Gi
+    cpu: 1000m
+
+service:
+  type: ClusterIP
+  ports:
+    http: 8080
+
+ingress:
+  enabled: true
+  ingressClassName: nginx
+  hostname: keycloak.todo.local
+  path: /
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-buffer-size: "128k"

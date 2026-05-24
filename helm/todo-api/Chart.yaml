@@ -1,0 +1,12 @@
+apiVersion: v2
+name: todo-api
+description: Spring Boot API — Todo Enterprise (Architecture Hexagonale)
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+keywords:
+  - java
+  - spring-boot
+  - todo
+maintainers:
+  - name: Amine Charrad

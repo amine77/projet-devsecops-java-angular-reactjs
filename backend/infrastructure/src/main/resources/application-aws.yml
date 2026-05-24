@@ -1,0 +1,71 @@
+# ============================================================
+#  application-aws.yml — Profil session AWS
+#  Actif avec : SPRING_PROFILES_ACTIVE=aws
+#  Cible : App Runner → RDS PostgreSQL + Cognito
+#
+#  Les valeurs sensibles viennent de :
+#    - Variables d'env App Runner (injectées par Terraform)
+#    - AWS Systems Manager Parameter Store
+# ============================================================
+
+spring:
+
+  # ── RDS PostgreSQL (éphémère) ───────────────────────────────
+  datasource:
+    url: ${SPRING_DATASOURCE_URL}          # jdbc:postgresql://<rds-endpoint>:5432/tododb
+    username: ${SPRING_DATASOURCE_USERNAME:todouser}
+    password: ${SPRING_DATASOURCE_PASSWORD}
+    hikari:
+      maximum-pool-size: 5                 # App Runner 0.25 vCPU — pas trop de connexions
+      minimum-idle: 1
+      connection-timeout: 30000
+
+  # ── MongoDB — désactivé en AWS (Event Store optionnel) ──────
+  # En session AWS on se concentre sur le flux principal RDS
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.autoconfigure.mongo.MongoAutoConfiguration
+      - org.springframework.boot.autoconfigure.data.mongo.MongoDataAutoConfiguration
+
+  # ── Redis — désactivé en AWS (pas de Redis éphémère) ────────
+  cache:
+    type: simple   # Remplace Redis par un cache en mémoire
+
+  # ── Kafka — désactivé en AWS pour l'API principale ──────────
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+
+  # ── Cognito OIDC ────────────────────────────────────────────
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: ${COGNITO_ISSUER_URI}
+          # jwk-set-uri auto-découvert depuis l'issuer
+
+# ── Spring Cloud AWS ───────────────────────────────────────────
+spring.cloud.aws:
+  credentials:
+    instance-profile: true   # App Runner utilise le rôle IAM de l'instance
+  region:
+    static: eu-west-3
+
+  # Parameter Store — préfixe /todo-app/aws/
+  parameterstore:
+    enabled: true
+
+# ── Stockage S3 ────────────────────────────────────────────────
+app:
+  storage:
+    provider: s3
+    s3:
+      bucket: todo-enterprise-attachments
+      region: eu-west-3
+  cors:
+    allowed-origins: ${APP_CORS_ALLOWED_ORIGINS:https://d1234.cloudfront.net}
+
+# ── Logging vers CloudWatch ────────────────────────────────────
+logging:
+  level:
+    root: WARN
+    com.todo: INFO

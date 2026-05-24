@@ -1,0 +1,64 @@
+# ============================================================
+#  application-local.yml — Profil développement local
+#  Actif avec : SPRING_PROFILES_ACTIVE=local
+#  Cible : Docker Compose ou Minikube (namespace data)
+# ============================================================
+
+spring:
+
+  # ── PostgreSQL local ────────────────────────────────────────
+  datasource:
+    url: jdbc:postgresql://${POSTGRES_HOST:localhost}:5432/tododb
+    username: todouser
+    password: todopass
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 2
+
+  # ── MongoDB local ───────────────────────────────────────────
+  data:
+    mongodb:
+      uri: mongodb://mongouser:mongopass@${MONGO_HOST:localhost}:27017/tododb
+      auto-index-creation: true
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: 6379
+      # Pas de password en local
+
+  # ── Kafka local (Redpanda) ──────────────────────────────────
+  kafka:
+    bootstrap-servers: ${KAFKA_HOST:localhost}:19092
+
+  # ── Spring Security — Keycloak local ───────────────────────
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: http://${KEYCLOAK_HOST:localhost}:8180/realms/todo
+          jwk-set-uri: http://${KEYCLOAK_HOST:localhost}:8180/realms/todo/protocol/openid-connect/certs
+
+# ── Logging verbeux en dev ─────────────────────────────────────
+logging:
+  level:
+    com.todo: DEBUG
+    org.springframework.security: DEBUG
+    org.hibernate.SQL: DEBUG
+
+# ── Stockage local (pas de S3 en local) ───────────────────────
+app:
+  storage:
+    # En local, on stocke les fichiers sur le disque
+    # L'adaptateur FileStoragePort utilise le profil pour choisir l'implémentation
+    provider: local
+    local:
+      upload-dir: ./uploads
+  cors:
+    allowed-origins: http://localhost:4200,http://localhost:3000,http://todo.local
+
+# ── Spring Cloud AWS — désactivé en local ─────────────────────
+spring.cloud.aws:
+  credentials:
+    instance-profile: false
+    use-default-aws-credentials-chain: false
+  region:
+    static: eu-west-3

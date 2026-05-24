@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+                             https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.todo</groupId>
+        <artifactId>todo-enterprise</artifactId>
+        <version>0.1.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>todo-domain</artifactId>
+    <name>Todo Domain — Hexagonal Core</name>
+    <description>
+        Couche Domaine — Zéro dépendance vers Spring, JPA, Kafka, AWS.
+        Contient : entités, value objects, ports (in/out), domain services.
+        Règle : aucun import software.amazon.*, org.springframework.*, javax.persistence.*
+    </description>
+
+    <!-- ══════════════════════════════════════════════════════
+         RÈGLE D'OR : Le domaine n'a AUCUNE dépendance
+         vers des frameworks externes.
+
+         ✅ Autorisé : Java 21 stdlib, Lombok (optionnel)
+         ❌ Interdit : Spring, JPA, Kafka, AWS SDK, Jackson
+    ══════════════════════════════════════════════════════ -->
+
+    <dependencies>
+        <!-- Lombok — optionnel, peut être remplacé par Records Java 21 -->
+        <!-- On l'exclut ici : on préfère les Records natifs Java 21 -->
+
+        <!-- Tests uniquement — pas de Spring Test dans le domaine -->
+        <!-- JUnit 5 + AssertJ + Mockito hérités du parent BOM -->
+    </dependencies>
+
+    <build>
+        <plugins>
+            <!-- JaCoCo sur le domaine — objectif 100% (logique pure testable) -->
+            <plugin>
+                <groupId>org.jacoco</groupId>
+                <artifactId>jacoco-maven-plugin</artifactId>
+                <configuration>
+                    <rules>
+                        <rule>
+                            <element>BUNDLE</element>
+                            <limits>
+                                <limit>
+                                    <counter>LINE</counter>
+                                    <value>COVEREDRATIO</value>
+                                    <minimum>0.90</minimum>  <!-- 90% sur le domaine -->
+                                </limit>
+                            </limits>
+                        </rule>
+                    </rules>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+
+</project>

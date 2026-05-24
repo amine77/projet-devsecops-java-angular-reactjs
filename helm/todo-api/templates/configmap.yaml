@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "todo-api.fullname" . }}-config
+  labels:
+    {{- include "todo-api.labels" . | nindent 4 }}
+data:
+  # Variables non-sensibles passées comme ConfigMap
+  # Les credentials (DB passwords, secrets) sont dans le Secret todo-api-secrets
+  SPRING_PROFILES_ACTIVE: {{ .Values.env.SPRING_PROFILES_ACTIVE | quote }}

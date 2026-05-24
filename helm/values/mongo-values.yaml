@@ -1,0 +1,38 @@
+# ============================================================
+#  MongoDB 7 — Bitnami Chart — Minikube (namespace: data)
+#  helm install mongo bitnami/mongodb -n data -f helm/values/mongo-values.yaml
+# ============================================================
+
+# Mode standalone (pas de ReplicaSet en local)
+architecture: standalone
+
+auth:
+  enabled: true
+  rootUser: mongouser
+  rootPassword: mongopass
+  databases:
+    - tododb
+  usernames:
+    - mongouser
+  passwords:
+    - mongopass
+
+persistence:
+  enabled: true
+  size: 2Gi
+  storageClass: standard
+
+resources:
+  requests:
+    memory: 256Mi
+    cpu: 100m
+  limits:
+    memory: 512Mi
+    cpu: 500m
+
+# MongoDB utilisé pour l'Event Store (historique des événements domaine)
+# Collections : task_events, user_events
+# Schéma libre — structure définie par Spring Data MongoDB
+
+metrics:
+  enabled: false

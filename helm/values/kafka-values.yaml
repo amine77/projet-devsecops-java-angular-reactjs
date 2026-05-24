@@ -1,0 +1,70 @@
+# ============================================================
+#  Kafka (Bitnami) — Mode KRaft (sans ZooKeeper) — Minikube
+#  helm install kafka bitnami/kafka -n data -f helm/values/kafka-values.yaml
+#
+#  KRaft = ZooKeeper-free depuis Kafka 3.3 (stable)
+#  Bitnami chart >= 26.x utilise KRaft par défaut
+# ============================================================
+
+# 1 seul broker en dev local
+controller:
+  replicaCount: 1
+
+broker:
+  replicaCount: 0   # En mode combined (controller+broker), broker séparé = 0
+
+# Mode combined : le controller joue aussi le rôle de broker
+kraft:
+  enabled: true
+
+persistence:
+  enabled: true
+  size: 5Gi
+  storageClass: standard
+
+resources:
+  requests:
+    memory: 512Mi
+    cpu: 250m
+  limits:
+    memory: 1Gi
+    cpu: 1000m
+
+# Topics créés automatiquement au démarrage
+provisioning:
+  enabled: true
+  topics:
+    - name: task-events
+      partitions: 1
+      replicationFactor: 1
+      config:
+        retention.ms: "604800000"   # 7 jours
+        cleanup.policy: delete
+
+    - name: task-notifications
+      partitions: 1
+      replicationFactor: 1
+      config:
+        retention.ms: "86400000"    # 1 jour
+
+    - name: task-audit
+      partitions: 1
+      replicationFactor: 1
+      config:
+        retention.ms: "2592000000"  # 30 jours
+
+# Adresse accessible depuis Spring Boot dans le cluster
+# kafka.data.svc.cluster.local:9092
+listeners:
+  client:
+    protocol: PLAINTEXT
+  interbroker:
+    protocol: PLAINTEXT
+  controller:
+    protocol: PLAINTEXT
+
+metrics:
+  kafka:
+    enabled: false
+  jmx:
+    enabled: false

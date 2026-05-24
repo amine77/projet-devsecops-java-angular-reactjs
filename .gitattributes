@@ -1,0 +1,33 @@
+# ============================================================
+#  .gitattributes — Normalisation des fins de ligne
+#  Évite les diffs parasites entre Windows (CRLF) et Linux/Mac (LF)
+# ============================================================
+
+# Par défaut : LF partout (standard Linux/Mac/CI)
+* text=auto eol=lf
+
+# Fichiers texte explicitement en LF
+*.java      text eol=lf
+*.xml       text eol=lf
+*.yml       text eol=lf
+*.yaml      text eol=lf
+*.json      text eol=lf
+*.sql       text eol=lf
+*.md        text eol=lf
+*.tf        text eol=lf
+*.sh        text eol=lf
+*.tpl       text eol=lf
+Makefile    text eol=lf
+Dockerfile  text eol=lf
+
+# PowerShell — CRLF sur Windows
+*.ps1       text eol=crlf
+*.bat       text eol=crlf
+*.cmd       text eol=crlf
+
+# Fichiers binaires — pas de conversion
+*.jar       binary
+*.war       binary
+*.png       binary
+*.jpg       binary
+*.pdf       binary
