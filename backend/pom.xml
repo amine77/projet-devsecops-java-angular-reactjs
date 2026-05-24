@@ -132,11 +132,14 @@
                     <artifactId>maven-compiler-plugin</artifactId>
                     <version>3.13.0</version>
                     <configuration>
-                        <source>21</source>
-                        <target>21</target>
-                        <compilerArgs>
-                            <arg>--enable-preview</arg>
-                        </compilerArgs>
+                        <!--
+                            release au lieu de source/target :
+                            Obligatoire pour Maven Compiler Plugin 3.11+.
+                            Plus strict : interdit l'utilisation d'APIs supprimees.
+                            Note : enable-preview supprime car Records, switch expressions
+                            et pattern matching sont tous GA en Java 21.
+                        -->
+                        <release>21</release>
                     </configuration>
                 </plugin>
 
@@ -146,7 +149,8 @@
                     <artifactId>maven-surefire-plugin</artifactId>
                     <version>3.3.0</version>
                     <configuration>
-                        <argLine>--enable-preview</argLine>
+                        <!-- enable-preview supprime : toutes les features Java 21 sont GA -->
+                        <argLine/>
                         <includes>
                             <include>**/*Test.java</include>
                             <include>**/*Tests.java</include>
