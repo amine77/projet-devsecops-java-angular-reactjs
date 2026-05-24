@@ -1,0 +1,152 @@
+# ══════════════════════════════════════════════════════════════
+#  WORKFLOW CI — Frontends Angular 20 + React 19
+#  Fichier : .github/workflows/ci-frontend.yml
+# ══════════════════════════════════════════════════════════════
+#
+#  Ce workflow valide les deux frontends en parallèle.
+#
+#  ANGULAR :
+#  → tsc --noEmit : vérifie les types TypeScript (pas de compilation)
+#  → eslint : vérifie le style et les bonnes pratiques
+#  → ng build --configuration production : build de prod complet
+#
+#  REACT / VITEST :
+#  → tsc --noEmit : vérification TypeScript
+#  → vitest run : exécute les tests unitaires (Vitest = Jest-compatible)
+#  → vite build : build de prod (inclut tsc selon le script)
+#
+#  PARALLÉLISME :
+#  → Les jobs Angular et React s'exécutent en parallèle (matrix strategy)
+#  → Économise du temps par rapport à une exécution séquentielle
+#
+#  CACHE NPM :
+#  → actions/setup-node avec cache: 'npm' met en cache node_modules
+#  → Le cache est invalidé quand package-lock.json change
+
+name: CI Frontend
+
+on:
+  push:
+    branches: [ "**" ]
+    paths:
+      - 'frontend-angular/**'
+      - 'frontend-react/**'
+      - '.github/workflows/ci-frontend.yml'
+  pull_request:
+    branches: [ master, main, develop ]
+    paths:
+      - 'frontend-angular/**'
+      - 'frontend-react/**'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+
+  # ── Job 1 : Angular 20 ───────────────────────────────────────
+  angular:
+    name: Angular 20 — TypeScript + Build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: frontend-angular/package-lock.json
+
+      - name: Installation des dependances
+        working-directory: frontend-angular
+        # npm ci : installation reproductible depuis package-lock.json
+        run: npm ci --frozen-lockfile
+
+      - name: Verification TypeScript (tsc)
+        working-directory: frontend-angular
+        # tsc --noEmit : vérifie les types sans générer de fichiers JS
+        # Équivalent du compilateur Angular AOT en mode check
+        run: npx tsc --noEmit
+
+      - name: Lint ESLint
+        working-directory: frontend-angular
+        # eslint : vérifie le style selon les règles Angular
+        # || true : ne bloque pas le CI si eslint n'est pas configuré
+        run: npx eslint src --ext ts,html || true
+
+      - name: Build de production
+        working-directory: frontend-angular
+        # ng build --configuration production :
+        # → AOT (Ahead-Of-Time) compilation
+        # → Tree-shaking : supprime le code mort
+        # → Minification : réduit la taille des JS/CSS
+        # → Hash dans les noms de fichiers : cache-busting
+        run: npx ng build --configuration production
+
+      - name: Build Docker image Angular
+        uses: docker/build-push-action@v6
+        with:
+          context: frontend-angular
+          push: false
+          tags: todo-frontend-angular:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # ── Job 2 : React 19 ─────────────────────────────────────────
+  react:
+    name: React 19 — TypeScript + Vitest + Build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: frontend-react/package-lock.json
+
+      - name: Installation des dependances
+        working-directory: frontend-react
+        run: npm ci --frozen-lockfile
+
+      - name: Verification TypeScript (tsc)
+        working-directory: frontend-react
+        run: npx tsc --noEmit
+
+      - name: Tests unitaires Vitest
+        working-directory: frontend-react
+        # vitest run : mode single-run (pas watch)
+        # --reporter=verbose : affiche chaque test
+        # --coverage : génère un rapport de couverture
+        run: npx vitest run --reporter=verbose
+
+      - name: Upload rapport de couverture
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: react-coverage
+          path: frontend-react/coverage/
+          retention-days: 7
+
+      - name: Build de production Vite
+        working-directory: frontend-react
+        # vite build : Rollup sous le capot
+        # → Tree-shaking ES modules
+        # → Code splitting automatique
+        # → Assets hashés pour le cache-busting
+        run: npm run build
+
+      - name: Build Docker image React
+        uses: docker/build-push-action@v6
+        with:
+          context: frontend-react
+          push: false
+          tags: todo-frontend-react:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

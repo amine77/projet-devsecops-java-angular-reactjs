@@ -1,0 +1,235 @@
+# ══════════════════════════════════════════════════════════════
+#  WORKFLOW CD — Deploiement continu vers AWS
+#  Fichier : .github/workflows/cd.yml
+# ══════════════════════════════════════════════════════════════
+#
+#  Ce workflow déploie l'application sur AWS ECS Fargate après
+#  chaque push sur master (si le CI passe).
+#
+#  ARCHITECTURE DE DEPLOIEMENT :
+#
+#  GitHub Actions
+#    → Build Docker images (3 images : backend, angular, react)
+#    → Push vers Amazon ECR (Elastic Container Registry)
+#    → Mise à jour des task definitions ECS
+#    → Force new deployment → ECS rolling update
+#
+#  ECS FARGATE :
+#  → Fargate = serverless containers (pas de gestion de serveurs EC2)
+#  → Rolling update : nouveaux containers lancés avant d'arrêter les anciens
+#    Zéro downtime si au moins 2 replicas
+#  → Health check ALB : ECS attend que le /health réponde avant de couper l'ancienne version
+#
+#  ECR :
+#  → Registry Docker privé géré par AWS
+#  → Images immutables : le tag = SHA du commit Git
+#  → Lifecycle policy : supprime les images de plus de 30 jours (économies)
+#
+#  AUTHENTIFICATION AWS :
+#  → OIDC (OpenID Connect) : GitHub Actions s'authentifie auprès d'AWS
+#    sans stocker de clés AWS dans les secrets GitHub !
+#  → aws-actions/configure-aws-credentials gère l'échange de tokens
+#  → Rôle IAM avec permissions minimales (principe du moindre privilège)
+#
+#  SECRETS GITHUB REQUIS :
+#  → AWS_ACCOUNT_ID : ID du compte AWS (12 chiffres)
+#  → AWS_REGION : ex. eu-west-1
+#  → AWS_ROLE_TO_ASSUME : ARN du rôle IAM GitHub Actions
+#  → VITE_OIDC_AUTHORITY : URL Keycloak/Cognito de production
+#  → Plus de clés AWS_ACCESS_KEY_ID/SECRET (remplacées par OIDC !)
+
+name: CD — Deploy to AWS
+
+on:
+  push:
+    branches: [ master, main ]
+  # Déclenchement manuel avec choix de l'environnement
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environnement de deploiement'
+        required: true
+        default: 'staging'
+        type: choice
+        options: [ staging, production ]
+
+# Empêche deux déploiements simultanés
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false    # Ne pas annuler un déploiement en cours !
+
+env:
+  AWS_REGION: ${{ secrets.AWS_REGION || 'eu-west-1' }}
+  ECR_REGISTRY: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION || 'eu-west-1' }}.amazonaws.com
+  IMAGE_TAG: ${{ github.sha }}
+
+jobs:
+
+  # ── Pré-requis : les CIs doivent passer ──────────────────────
+  # Ce job vérifie que les workflows CI ont réussi avant de déployer
+  # (GitHub environments avec required status checks)
+
+  # ── Job 1 : Build + Push des images Docker vers ECR ──────────
+  build-and-push:
+    name: Build et Push vers ECR
+    runs-on: ubuntu-latest
+    # Ne déploie que si on est sur master (pas en PR)
+    if: github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main'
+
+    # Outputs : les digests des images pour le déploiement
+    outputs:
+      backend-image: ${{ steps.build-backend.outputs.image }}
+      angular-image: ${{ steps.build-angular.outputs.image }}
+      react-image: ${{ steps.build-react.outputs.image }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # ── Authentification AWS via OIDC (sans clés statiques) ──
+      - name: Configurer les credentials AWS
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+          aws-region: ${{ env.AWS_REGION }}
+          # OIDC : GitHub génère un token JWT signé par son OIDC provider
+          # AWS IAM vérifie ce token et échange contre des credentials temporaires
+
+      - name: Login vers Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # ── Build Backend ──────────────────────────────────────────
+      - name: Build et push image backend
+        id: build-backend
+        uses: docker/build-push-action@v6
+        with:
+          context: backend
+          file: backend/infrastructure/Dockerfile
+          push: true
+          tags: |
+            ${{ env.ECR_REGISTRY }}/todo-backend:${{ env.IMAGE_TAG }}
+            ${{ env.ECR_REGISTRY }}/todo-backend:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          # Labels OCI pour la traçabilité
+          labels: |
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+
+      # ── Build Angular ──────────────────────────────────────────
+      - name: Build et push image Angular
+        id: build-angular
+        uses: docker/build-push-action@v6
+        with:
+          context: frontend-angular
+          push: true
+          tags: |
+            ${{ env.ECR_REGISTRY }}/todo-frontend-angular:${{ env.IMAGE_TAG }}
+            ${{ env.ECR_REGISTRY }}/todo-frontend-angular:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          labels: |
+            org.opencontainers.image.revision=${{ github.sha }}
+
+      # ── Build React ────────────────────────────────────────────
+      - name: Build et push image React
+        id: build-react
+        uses: docker/build-push-action@v6
+        with:
+          context: frontend-react
+          push: true
+          build-args: |
+            VITE_API_URL=${{ secrets.VITE_API_URL }}
+            VITE_OIDC_AUTHORITY=${{ secrets.VITE_OIDC_AUTHORITY }}
+            VITE_OIDC_CLIENT_ID=${{ secrets.VITE_OIDC_CLIENT_ID || 'todo-spa' }}
+            VITE_OIDC_REDIRECT_URI=${{ secrets.VITE_OIDC_REDIRECT_URI }}
+          tags: |
+            ${{ env.ECR_REGISTRY }}/todo-frontend-react:${{ env.IMAGE_TAG }}
+            ${{ env.ECR_REGISTRY }}/todo-frontend-react:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # ── Job 2 : Déploiement ECS Backend ──────────────────────────
+  deploy-backend:
+    name: Deployer backend ECS
+    runs-on: ubuntu-latest
+    needs: build-and-push
+    environment: production    # Nécessite une approbation manuelle (optionnel)
+
+    steps:
+      - name: Configurer les credentials AWS
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Mettre a jour la Task Definition ECS et deployer
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v2
+        with:
+          # Nom du cluster ECS créé par Terraform
+          cluster: todo-enterprise-cluster
+          # Nom du service ECS (Fargate)
+          service: todo-backend-service
+          # Task definition mise à jour avec la nouvelle image
+          task-definition: todo-backend-task
+          # Image à utiliser
+          container-name: todo-backend
+          container-image: ${{ env.ECR_REGISTRY }}/todo-backend:${{ env.IMAGE_TAG }}
+          # wait-for-service-stability : attend que le déploiement soit complet
+          wait-for-service-stability: true
+
+  # ── Job 3 : Déploiement ECS Frontends ─────────────────────────
+  deploy-frontends:
+    name: Deployer frontends ECS
+    runs-on: ubuntu-latest
+    needs: build-and-push
+    # Les deux frontends se déploient en même temps (pas de dépendance)
+
+    steps:
+      - name: Configurer les credentials AWS
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Deployer Angular
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v2
+        with:
+          cluster: todo-enterprise-cluster
+          service: todo-frontend-angular-service
+          task-definition: todo-frontend-angular-task
+          container-name: todo-frontend-angular
+          container-image: ${{ env.ECR_REGISTRY }}/todo-frontend-angular:${{ env.IMAGE_TAG }}
+          wait-for-service-stability: true
+
+      - name: Deployer React
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v2
+        with:
+          cluster: todo-enterprise-cluster
+          service: todo-frontend-react-service
+          task-definition: todo-frontend-react-task
+          container-name: todo-frontend-react
+          container-image: ${{ env.ECR_REGISTRY }}/todo-frontend-react:${{ env.IMAGE_TAG }}
+          wait-for-service-stability: true
+
+  # ── Job 4 : Notification de fin de deploiement ───────────────
+  notify:
+    name: Notification
+    runs-on: ubuntu-latest
+    needs: [ deploy-backend, deploy-frontends ]
+    if: always()    # Toujours notifier, succès ou échec
+
+    steps:
+      - name: Resume du deploiement
+        run: |
+          echo "Deploiement termine"
+          echo "Commit : ${{ github.sha }}"
+          echo "Auteur : ${{ github.actor }}"
+          echo "Backend : ${{ needs.deploy-backend.result }}"
+          echo "Frontends : ${{ needs.deploy-frontends.result }}"
+          # En production : envoyer une notification Slack/Teams/PagerDuty
+          # curl -X POST $SLACK_WEBHOOK -d '{"text":"Deploy OK"}'

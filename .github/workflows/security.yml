@@ -1,0 +1,187 @@
+# ══════════════════════════════════════════════════════════════
+#  WORKFLOW SECURITE — Trivy + OWASP
+#  Fichier : .github/workflows/security.yml
+# ══════════════════════════════════════════════════════════════
+#
+#  Ce workflow effectue des scans de sécurité sur les images Docker
+#  et les dépendances du projet.
+#
+#  OUTILS :
+#
+#  1. TRIVY (Aqua Security) :
+#     → Scan de vulnérabilités CVE dans les images Docker
+#     → Scan du filesystem (secrets accidentels, mauvaises configs)
+#     → Scan des dépendances npm et Maven
+#     → Génère un rapport SARIF uploadé dans GitHub Security tab
+#
+#  2. OWASP Dependency-Check :
+#     → Base NVD (National Vulnerability Database) du NIST
+#     → Vérifie les CVE connues dans les dépendances Java
+#     → Rapport HTML uploadé comme artifact
+#
+#  SARIF (Static Analysis Results Interchange Format) :
+#  → Format standard pour les résultats de sécurité statique
+#  → GitHub l'affiche dans l'onglet "Security > Code Scanning"
+#  → Permet de voir les vulnérabilités directement dans les PR
+#
+#  QUAND :
+#  → Push sur master : scan complet
+#  → Schedule : chaque lundi à 8h UTC (détecte les nouvelles CVE)
+#    De nouvelles vulnérabilités peuvent apparaître sans qu'on change le code !
+#  → Pull Request : scan des images buildées dans la PR
+
+name: Security Scan
+
+on:
+  push:
+    branches: [ master, main ]
+  pull_request:
+    branches: [ master, main ]
+  schedule:
+    # Chaque lundi à 8h UTC — détecte les nouvelles CVEs hebdomadaires
+    - cron: '0 8 * * MON'
+  workflow_dispatch:   # Déclenchement manuel depuis l'interface GitHub
+
+jobs:
+
+  # ── Job 1 : Scan Trivy du filesystem (secrets + config) ───────
+  trivy-filesystem:
+    name: Trivy — Scan filesystem
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Scan Trivy filesystem
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          # HIGH et CRITICAL uniquement — ignore LOW/MEDIUM pour réduire le bruit
+          severity: 'HIGH,CRITICAL'
+          format: 'sarif'
+          output: 'trivy-fs-results.sarif'
+          # Cherche aussi les secrets hardcodés (mots de passe, tokens, clés)
+          scanners: 'vuln,secret,misconfig'
+
+      - name: Upload SARIF vers GitHub Security
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: 'trivy-fs-results.sarif'
+          category: 'trivy-filesystem'
+
+  # ── Job 2 : Build + Scan Trivy image Docker Backend ──────────
+  trivy-docker-backend:
+    name: Trivy — Image Docker backend
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build image backend
+        uses: docker/build-push-action@v6
+        with:
+          context: backend
+          file: backend/infrastructure/Dockerfile
+          push: false
+          load: true    # Charge l'image localement pour le scan Trivy
+          tags: todo-backend:scan
+          cache-from: type=gha
+
+      - name: Scan Trivy image backend
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: 'todo-backend:scan'
+          severity: 'HIGH,CRITICAL'
+          format: 'sarif'
+          output: 'trivy-backend-results.sarif'
+          # ignore-unfixed : ignore les CVEs sans patch disponible
+          ignore-unfixed: true
+
+      - name: Upload SARIF
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: 'trivy-backend-results.sarif'
+          category: 'trivy-docker-backend'
+
+  # ── Job 3 : Scan Trivy image Docker React ────────────────────
+  trivy-docker-react:
+    name: Trivy — Image Docker React
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build image React
+        uses: docker/build-push-action@v6
+        with:
+          context: frontend-react
+          push: false
+          load: true
+          tags: todo-react:scan
+          cache-from: type=gha
+
+      - name: Scan Trivy image React
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: 'todo-react:scan'
+          severity: 'HIGH,CRITICAL'
+          format: 'sarif'
+          output: 'trivy-react-results.sarif'
+          ignore-unfixed: true
+
+      - name: Upload SARIF
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: 'trivy-react-results.sarif'
+          category: 'trivy-docker-react'
+
+  # ── Job 4 : GitHub CodeQL (analyse statique du code) ─────────
+  codeql:
+    name: CodeQL — Analyse statique
+    runs-on: ubuntu-latest
+    # CodeQL supporte Java, JavaScript, TypeScript
+    strategy:
+      matrix:
+        language: [ 'java', 'javascript' ]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Initialiser CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: ${{ matrix.language }}
+          # queries: security-extended pour des règles de sécurité supplémentaires
+          queries: security-extended
+
+      - name: Setup Java 21 (pour l'analyse Java)
+        if: matrix.language == 'java'
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          cache: 'maven'
+
+      - name: Build backend (pour CodeQL Java)
+        if: matrix.language == 'java'
+        working-directory: backend
+        run: mvn -B compile -DskipTests
+
+      - name: Analyse CodeQL
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: '/language:${{matrix.language}}'

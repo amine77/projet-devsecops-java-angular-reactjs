@@ -1,0 +1,19 @@
+# Exclure les fichiers inutiles du contexte Docker
+# Réduit la taille du contexte envoyé au daemon Docker
+
+target/
+*.class
+*.jar
+!**/target/*.jar
+
+.git/
+.github/
+.idea/
+*.iml
+
+**/*.md
+**/*.txt
+
+# Fichiers de test et config IDE
+**/*Test.java
+**/*.xml.bak
