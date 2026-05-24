@@ -1,0 +1,11 @@
+node_modules/
+dist/
+.git/
+.github/
+**/*.md
+**/*.test.ts
+**/*.test.tsx
+**/__tests__/
+.env
+.env.local
+.env.*.local

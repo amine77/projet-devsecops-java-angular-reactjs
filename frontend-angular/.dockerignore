@@ -1,0 +1,9 @@
+node_modules/
+dist/
+.angular/
+*.tsbuildinfo
+.git/
+.github/
+**/*.md
+**/*.spec.ts
+**/*.test.ts

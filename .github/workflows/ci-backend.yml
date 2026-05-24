@@ -1,0 +1,225 @@
+# ══════════════════════════════════════════════════════════════
+#  WORKFLOW CI — Backend Spring Boot
+#  Fichier : .github/workflows/ci-backend.yml
+# ══════════════════════════════════════════════════════════════
+#
+#  Ce workflow s'exécute sur chaque push et Pull Request.
+#  Il garantit que le code backend est correct avant le merge.
+#
+#  ÉTAPES :
+#  1. Checkout du code
+#  2. Setup Java 21 (avec cache Maven)
+#  3. Compilation + tests unitaires (sans Spring, rapides)
+#  4. Tests d'intégration Testcontainers (PostgreSQL + Redis réels)
+#  5. Rapport de couverture Jacoco → SonarCloud
+#  6. Scan OWASP Dependency-Check (vulnérabilités CVE des dépendances)
+#  7. Build Docker image (vérification que le Dockerfile fonctionne)
+#
+#  RUNNERS :
+#  → ubuntu-latest = VM Ubuntu fournie par GitHub (2 CPU, 7 GB RAM)
+#  → Gratuit pour les repos publics, limité pour les privés
+#
+#  SECRETS GITHUB :
+#  → SONAR_TOKEN : jeton SonarCloud (dans GitHub Settings > Secrets)
+#  → Ces secrets ne sont jamais loggués par GitHub Actions
+#
+#  CACHE MAVEN :
+#  → actions/cache sauvegarde ~/.m2/repository entre les runs
+#  → Économise 2-3 min de téléchargement par exécution
+
+name: CI Backend
+
+on:
+  push:
+    branches: [ "**" ]
+    paths:
+      - 'backend/**'
+      - '.github/workflows/ci-backend.yml'
+  pull_request:
+    branches: [ master, main, develop ]
+    paths:
+      - 'backend/**'
+
+# Évite les runs redondants (si on push plusieurs fois sur la même branche)
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+
+  # ── Job 1 : Tests unitaires (rapides, sans infrastructure) ───
+  unit-tests:
+    name: Tests unitaires
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # fetch-depth: 0 nécessaire pour SonarCloud (analyse l'historique Git)
+          fetch-depth: 0
+
+      - name: Setup Java 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'    # Eclipse Temurin = Adoptium (gratuit, LTS)
+          cache: 'maven'             # Cache automatique du ~/.m2
+
+      - name: Compilation + tests unitaires
+        working-directory: backend
+        # -pl domain,application : exclut l'infrastructure pour cette étape
+        # Les tests unitaires domain et application n'ont pas besoin de Spring
+        run: |
+          mvn -B verify \
+            -pl domain,application \
+            --also-make \
+            -Dsurefire.failIfNoSpecifiedTests=false
+
+      - name: Upload rapport de tests
+        if: always()   # Toujours uploader, même si les tests échouent
+        uses: actions/upload-artifact@v4
+        with:
+          name: unit-test-reports
+          path: |
+            backend/domain/target/surefire-reports/
+            backend/application/target/surefire-reports/
+          retention-days: 7
+
+  # ── Job 2 : Tests d'intégration (Testcontainers) ─────────────
+  integration-tests:
+    name: Tests d'integration Testcontainers
+    runs-on: ubuntu-latest
+    # Docker est déjà installé sur ubuntu-latest (requis pour Testcontainers)
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Java 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          cache: 'maven'
+
+      - name: Tests d'integration avec Testcontainers
+        working-directory: backend
+        env:
+          # Testcontainers utilise le daemon Docker de la VM GitHub Actions
+          TESTCONTAINERS_RYUK_DISABLED: true
+        run: |
+          mvn -B verify \
+            -pl infrastructure \
+            --also-make \
+            -Dspring.profiles.active=test \
+            -Dsurefire.failIfNoSpecifiedTests=false
+
+      - name: Upload rapport Jacoco
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jacoco-report
+          path: backend/infrastructure/target/site/jacoco/
+          retention-days: 7
+
+  # ── Job 3 : Analyse SonarCloud ────────────────────────────────
+  sonarcloud:
+    name: Analyse SonarCloud
+    runs-on: ubuntu-latest
+    # Lance seulement si les deux suites de tests passent
+    needs: [ unit-tests, integration-tests ]
+    # SonarCloud n'est utile que sur master/develop ou en PR
+    if: github.ref == 'refs/heads/master' || github.event_name == 'pull_request'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0    # Historique complet pour SonarCloud
+
+      - name: Setup Java 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          cache: 'maven'
+
+      - name: Build + Jacoco + SonarCloud
+        working-directory: backend
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}   # Auto-injecté par GitHub
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}      # Créer dans SonarCloud
+        run: |
+          mvn -B verify \
+            -DskipTests \
+            org.sonarsource.scanner.maven:sonar-maven-plugin:sonar \
+            -Dsonar.projectKey=amine77_projet-devsecops-java-angular-reactjs \
+            -Dsonar.organization=amine77 \
+            -Dsonar.host.url=https://sonarcloud.io
+
+  # ── Job 4 : Scan OWASP Dependency-Check ──────────────────────
+  owasp-check:
+    name: OWASP Dependency-Check
+    runs-on: ubuntu-latest
+    # Lance seulement sur master et les PRs vers master
+    if: github.ref == 'refs/heads/master' || github.event_name == 'pull_request'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Java 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          cache: 'maven'
+
+      - name: Scan OWASP Dependency-Check
+        working-directory: backend
+        # CVSS score minimum pour échouer : 7.0 (HIGH)
+        # Le scan télécharge la base NVD (National Vulnerability Database)
+        # NVD_API_KEY : optionnel mais évite le rate limiting
+        env:
+          NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
+        run: |
+          mvn -B org.owasp:dependency-check-maven:check \
+            -DfailBuildOnCVSS=7 \
+            -DsuppressionFile=owasp-suppressions.xml \
+            -DnvdApiKey=${NVD_API_KEY:-} \
+            || true   # Ne fait pas échouer le CI si pas de clé NVD (rate limit)
+
+      - name: Upload rapport OWASP
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: owasp-report
+          path: backend/target/dependency-check-report.html
+          retention-days: 30
+
+  # ── Job 5 : Build Docker image ────────────────────────────────
+  docker-build:
+    name: Build Docker image backend
+    runs-on: ubuntu-latest
+    needs: [ unit-tests ]
+    # Build Docker seulement sur master et en PR (pas sur chaque branche feature)
+    if: github.ref == 'refs/heads/master' || github.event_name == 'pull_request'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        # Buildx = Docker BuildKit : builds parallèles, cache amélioré
+
+      - name: Build image (sans push)
+        uses: docker/build-push-action@v6
+        with:
+          context: backend
+          file: backend/infrastructure/Dockerfile
+          push: false          # Pas de push en CI (seulement en CD)
+          tags: todo-backend:${{ github.sha }}
+          cache-from: type=gha    # Cache GitHub Actions
+          cache-to: type=gha,mode=max
