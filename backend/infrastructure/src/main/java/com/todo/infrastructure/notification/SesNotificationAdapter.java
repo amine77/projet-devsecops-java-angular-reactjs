@@ -6,6 +6,7 @@ import com.todo.domain.port.out.NotificationPort;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
 import software.amazon.awssdk.services.ses.SesClient;
 import software.amazon.awssdk.services.ses.model.Body;
@@ -50,6 +51,7 @@ import software.amazon.awssdk.services.ses.model.SesException;
  * ══════════════════════════════════════════════════════════════
  */
 @Component
+@Profile("aws") // N'existe QUE sur le profil aws — NoOpNotificationAdapter prend le relai en local/test
 public class SesNotificationAdapter implements NotificationPort {
 
     private static final Logger log = LoggerFactory.getLogger(SesNotificationAdapter.class);

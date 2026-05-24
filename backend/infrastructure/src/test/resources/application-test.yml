@@ -1,0 +1,61 @@
+# ============================================================
+#  application-test.yml — Configuration pour les tests d'intégration
+#
+#  Activé par @ActiveProfiles("test") dans les classes de test.
+#  Les URLs des containers Testcontainers sont injectées via
+#  @DynamicPropertySource (elles remplacent ces valeurs).
+#
+#  STRATÉGIE :
+#  → PostgreSQL : Testcontainers (vraie DB)
+#  → Redis      : Testcontainers (vrai cache)
+#  → Kafka      : désactivé (mock ou pas de events en test)
+#  → AWS SES    : NoOpNotificationAdapter (@Profile("!aws"))
+#  → AWS S3     : LocalFileStorageAdapter (@Profile("!aws"))
+#  → DynamoDB   : InMemoryUserPreferenceAdapter (@Profile("!aws"))
+# ============================================================
+
+spring:
+  # ── JPA : laisser Flyway gérer le schéma ──────────────────────
+  jpa:
+    hibernate:
+      ddl-auto: validate            # Flyway s'exécute en premier
+    show-sql: false                 # Pas de SQL dans les logs de test
+    properties:
+      hibernate:
+        format_sql: false
+
+  # ── Flyway : exécuter les migrations sur la DB Testcontainers ──
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    # En test, la DB Testcontainers est vide à chaque démarrage
+    # baseline-on-migrate = false pour voir les erreurs de migration clairement
+    baseline-on-migrate: false
+    clean-on-validation-error: true  # Nettoie la DB si le schéma est incohérent
+
+  # ── Kafka : désactivé dans les tests d'intégration de base ────
+  # @DynamicPropertySource injecte une URL fictive, puis on désactive l'auto-config
+  kafka:
+    producer:
+      bootstrap-servers: localhost:19092
+
+  # ── Sécurité : désactivée pour les tests (pas de Keycloak) ────
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          # URI fictive — Spring Security ne démarrera pas de validation JWT
+          # Les tests qui testent la sécurité utilisent @WithMockUser ou SecurityMockMvcRequestPostProcessors
+          issuer-uri: http://localhost:8180/realms/todo
+
+# ── Logs : moins verbeux en test ─────────────────────────────────
+logging:
+  level:
+    com.todo: INFO
+    org.springframework.security: WARN
+    org.hibernate.SQL: WARN
+    org.testcontainers: INFO
+    com.zaxxer.hikari: WARN
+
+# ── Scheduler : désactivé en test (pas de rappels automatiques) ──
+spring.task.scheduling.shutdown.await-termination: false
