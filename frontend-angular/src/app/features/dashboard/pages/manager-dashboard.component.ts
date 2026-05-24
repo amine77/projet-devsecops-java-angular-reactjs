@@ -3,7 +3,6 @@ import {
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { RouterLink } from '@angular/router';
 import { TaskService } from '@core/services/task.service';
 import { AuthService } from '@core/auth/auth.service';
 import { Task, TASK_STATUS_LABELS, PRIORITY_LABELS, PRIORITY_COLORS } from '@core/models/task.model';
@@ -34,7 +33,7 @@ import { Task, TASK_STATUS_LABELS, PRIORITY_LABELS, PRIORITY_COLORS } from '@cor
 @Component({
   selector: 'app-manager-dashboard',
   standalone: true,
-  imports: [CommonModule, FormsModule, RouterLink],
+  imports: [CommonModule, FormsModule],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="container mx-auto p-6">
