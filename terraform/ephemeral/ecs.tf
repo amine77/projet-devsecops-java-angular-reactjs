@@ -27,6 +27,14 @@
 #  → Chaque frontend (0.25 vCPU, 0.25 GB) : ~6€/mois chacun
 #  → Total : ~21€/mois si actif 24/7
 #  → Strategy ephemeral : destroy la nuit → ~7€/mois (8h/j × 5j/semaine)
+#
+#  MODE ÉCONOMIQUE — assign_public_ip = true :
+#  → Les tâches ECS sont dans les subnets PUBLICS avec une IP publique
+#  → Elles atteignent ECR, CloudWatch, Secrets Manager directement via internet
+#  → Plus besoin de NAT Gateway → économie de ~32€/mois
+#  → Sécurité : les Security Groups n'autorisent que le trafic depuis l'ALB
+#    (port 8080 pour le backend, port 80 pour les frontends)
+#    L'IP publique ne change rien : aucun trafic extérieur ne passe les SGs
 
 # ── Cluster ECS ───────────────────────────────────────────────
 
@@ -155,11 +163,12 @@ resource "aws_ecs_service" "backend" {
   # FARGATE : AWS gère l'infra
   launch_type = "FARGATE"
 
-  # Réseau : dans les subnets privés (l'ALB redirige vers ces IPs)
+  # Réseau : subnets PUBLICS — pas de NAT Gateway, IP publique directe
+  # Les SGs garantissent que seul l'ALB peut atteindre le port 8080
   network_configuration {
-    subnets          = local.private_subnet_ids
+    subnets          = local.public_subnet_ids
     security_groups  = [aws_security_group.ecs_backend.id]
-    assign_public_ip = false    # Pas d'IP publique (passe par le NAT)
+    assign_public_ip = true    # IP publique → accès direct ECR/CloudWatch/SecretsManager
   }
 
   # Intégration avec l'ALB
@@ -238,9 +247,9 @@ resource "aws_ecs_service" "frontend_angular" {
   launch_type     = "FARGATE"
 
   network_configuration {
-    subnets          = local.private_subnet_ids
+    subnets          = local.public_subnet_ids
     security_groups  = [aws_security_group.ecs_frontend.id]
-    assign_public_ip = false
+    assign_public_ip = true
   }
 
   load_balancer {
@@ -310,9 +319,9 @@ resource "aws_ecs_service" "frontend_react" {
   launch_type     = "FARGATE"
 
   network_configuration {
-    subnets          = local.private_subnet_ids
+    subnets          = local.public_subnet_ids
     security_groups  = [aws_security_group.ecs_frontend.id]
-    assign_public_ip = false
+    assign_public_ip = true
   }
 
   load_balancer {

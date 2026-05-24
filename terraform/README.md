@@ -89,6 +89,7 @@ terraform/
 - Un VPC ne coûte rien tant qu'il n'y a pas de trafic
 - Des repos ECR coûtent uniquement le stockage des images (~1€/mois)
 - Des rôles IAM ne coûtent rien
+- ~~NAT Gateway~~ supprimé — voir [Mode économique](#mode-économique--pas-de-nat-gateway) ci-dessous
 
 **Ephemeral** = ressources facturées à l'heure même sans trafic :
 
@@ -101,6 +102,26 @@ terraform/
 | **Total** | | **~65€/mois** | **~14€/mois** |
 
 > 💡 **Strategy ephemeral** : `terraform destroy` avant de dormir → économie de 75%.
+
+### Mode économique — pas de NAT Gateway
+
+Le NAT Gateway coûtait ~32€/mois **en permanence**, même sans rien faire tourner. Il a été remplacé par :
+
+- **`assign_public_ip = true`** sur les tâches ECS Fargate : elles sont dans les subnets publics et accèdent directement aux APIs AWS (ECR, CloudWatch, Secrets Manager) sans intermédiaire
+- **VPC Endpoint S3 Gateway** (gratuit) : les couches des images Docker transitent dans le réseau AWS plutôt que par internet public
+
+La sécurité est identique : les Security Groups n'autorisent que l'ALB à parler aux conteneurs sur leur port de service. L'IP publique d'une tâche ECS n'est pas accessible de l'extérieur.
+
+```
+AVANT (avec NAT)                     APRÈS (sans NAT)
+─────────────────────────────        ──────────────────────────────
+Subnet privé                         Subnet public
+  ECS ──→ NAT Gateway (32€/mois)       ECS (IP publique) ──→ Internet
+         ──→ Internet                              ──→ ECR, CloudWatch...
+         ──→ ECR, CloudWatch...
+```
+
+Pour revenir au mode production avec NAT Gateway : voir [Remettre un NAT Gateway](#quand-remettre-un-nat-gateway).
 
 ---
 
@@ -425,12 +446,12 @@ aws ecs update-service `
 
 | Ressource | Coût mensuel |
 |-----------|-------------|
-| NAT Gateway (1 seul) | ~32€ |
-| ECR stockage (~3 images × 300MB) | ~0.09€ |
-| Elastic IP (inutilisée si NAT actif) | 0€ si attachée |
-| **Total permanent** | **~32€/mois** |
+| ~~NAT Gateway~~ | ~~32€~~ → **supprimé** |
+| VPC Endpoint S3 Gateway | **0€** (gratuit) |
+| ECR stockage (~3 images × 300 MB) | ~0.09€ |
+| **Total permanent** | **~0€/mois** |
 
-> 💡 Le NAT Gateway est la ressource la plus chère en permanence. En production avec 2 AZs : 64€/mois. Alternative pour dev : endpoint S3/ECR VPC (plus complexe).
+> 💡 Sans NAT Gateway, le stack permanent ne coûte pratiquement rien. En production, on le réintroduit (voir [Remettre un NAT Gateway](#quand-remettre-un-nat-gateway)).
 
 ### Coûts ephemeral (selon usage)
 
@@ -444,13 +465,19 @@ aws ecs update-service `
 | ALB | 0.025€ | ~4€ | ~18€ |
 | **Total ephemeral** | | **~15€/mois** | **~66€/mois** |
 
-### Coût total estimé (strategy ephemeral)
+### Coût total estimé (strategy ephemeral, sans NAT Gateway)
 
 ```
-Permanent :  ~32€/mois (NAT Gateway, inévitable)
-Ephemeral :  ~15€/mois (8h/j × 5j/semaine)
-─────────────────────────────────────────────
-Total :      ~47€/mois
+Permanent :  ~0€/mois  (VPC Endpoint S3 gratuit, ECR ~0.09€)
+Ephemeral :  ~15€/mois (8h/j × 5j/semaine, Free Tier actif)
+─────────────────────────────────────────────────────────────
+Total :      ~15€/mois
+```
+
+Comparaison avec l'architecture initiale (avec NAT Gateway) :
+```
+Avant :  ~47€/mois
+Après :  ~15€/mois  → économie de 68%
 ```
 
 ### Alertes de budget AWS (recommandé)
@@ -674,4 +701,49 @@ Le rôle `ecs_task_execution_role` doit avoir `secretsmanager:GetSecretValue` su
 
 ---
 
-*Mis à jour : Phase 6 — Infrastructure Terraform AWS*
+---
+
+### Quand remettre un NAT Gateway ?
+
+Pour passer en production avec des tâches ECS dans des subnets **privés** (recommandé si conformité stricte) :
+
+**1. Dans `terraform/permanent/vpc.tf`**, décommenter :
+```hcl
+resource "aws_eip" "nat" {
+  domain     = "vpc"
+  depends_on = [aws_internet_gateway.main]
+}
+
+resource "aws_nat_gateway" "main" {
+  allocation_id = aws_eip.nat.id
+  subnet_id     = aws_subnet.public[0].id
+  depends_on    = [aws_internet_gateway.main]
+}
+```
+
+Et ajouter la route dans `aws_route_table.private` :
+```hcl
+route {
+  cidr_block     = "0.0.0.0/0"
+  nat_gateway_id = aws_nat_gateway.main.id
+}
+```
+
+**2. Dans `terraform/ephemeral/ecs.tf`**, modifier les 3 services :
+```hcl
+network_configuration {
+  subnets          = local.private_subnet_ids   # ← privés
+  assign_public_ip = false                       # ← pas d'IP publique
+}
+```
+
+**3. Appliquer** :
+```bash
+terraform apply   # dans permanent/ puis ephemeral/
+```
+
+Coût ajouté : ~32€/mois (1 NAT Gateway). Pour la HA en prod : 2 NAT Gateways (~64€/mois).
+
+---
+
+*Mis à jour : Phase 6 — Infrastructure Terraform AWS (mode économique sans NAT Gateway)*
