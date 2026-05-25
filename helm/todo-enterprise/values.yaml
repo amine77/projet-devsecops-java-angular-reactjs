@@ -110,7 +110,14 @@ postgres:
   port: 5432
   database: "tododb"
   username: "todouser"
-  # Mot de passe injecté depuis un Secret Kubernetes
+
+  # Mot de passe créé par le Secret postgres-secret.yaml dans namespace todo-app.
+  # Doit correspondre à auth.password dans helm/values/postgres-values.yaml.
+  # En pipeline CI/CD : surcharger avec --set postgres.password=$POSTGRES_PASSWORD
+  # ou ajouter un secret GitHub POSTGRES_PASSWORD pour ne pas hardcoder ici.
+  password: "todopassword"   # Doit correspondre à postgres-values.yaml
+
+  # Nom et clé du Secret Kubernetes créé par postgres-secret.yaml
   secretName: "postgres-credentials"
   secretKey: "password"
 
